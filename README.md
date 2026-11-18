@@ -1,55 +1,84 @@
 # LinRgb — 1.0 Beta 1
 
-LinRgb controls RGB lighting on Linux, with NixOS as the primary platform. It is written in Rust with GTK4 and does not require OpenRGB or SignalRGB at runtime.
+**AI disclosure:** LinRgb was built with AI assistance under the maintainer’s direction. AI generated much of the code and documentation, and the maintainer tested selected hardware and workflows. A passing software test does not mean an unlisted device is safe or supported.
 
-## Getting started
+LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64-linux` is the primary platform for this beta. OpenRGB and SignalRGB are not required at runtime.
 
-```bash
-nix develop -c cargo run
-```
+## Try the beta without installing it
 
-Run LinRgb without `sudo`. Close other RGB applications and their background services before applying lighting settings.
-
-1. Select your devices.
-2. Choose **Solid color**, **Two-color fade**, **Breathing**, or **Color cycle**. Breathing fades to black between pulses and can alternate between two colors. Color cycle sweeps the spectrum with adjustable saturation. The preview uses the same effect as the selected devices.
-3. Click **Apply**. Applying another setting replaces the running effect. **Reset to white** stops the effect and sets the selected devices to solid white; it does not restore factory settings.
-
-The yellow window button hides LinRgb on desktops with a compatible system tray. Click the tray icon to reopen it. The red button exits LinRgb. Lighting settings are not saved to the controllers.
-
-Run the packaged app from this checkout with `nix run .` on `x86_64-linux`. The package includes a desktop launcher, a GTK runtime wrapper, and opt-in USB permission rules. Verify the locked build with `nix flake check --no-update-lock-file`.
-
-### NixOS device access
-
-Add the same LinRgb package to `environment.systemPackages` and `services.udev.packages` in your NixOS configuration. Rebuild and reconnect the USB controller so the rules apply. The rules match only the supported ASUS Aura and Fractal USB IDs and grant access to the active local session. `nix run .` alone does not install udev rules.
-
-For GPU and RAM controllers using I²C, LinRgb still requires access to the relevant `/dev/i2c-*` node. The package does not grant blanket I²C access. Verify the exact adapter and permissions with your administrator if **Apply** reports an access error. Never run the GUI as root.
-
-## Profiles and themes
-
-Enter a name in the **Profiles** sidebar and click **Save profile** to store both colors, the lighting mode, and the cycle duration. Saving under the same name updates the profile. Selecting a profile loads its settings without changing the LEDs. Click **Apply** to send the settings to the selected devices.
-
-Open **Settings** from the title bar to choose a built-in theme, import a JSON palette, or set the interface zoom from 80% to 150%. English is the default language; restart LinRgb after switching to French or English. The custom palette format and Matugen template are in [`design/`](design/README.md).
-
-Profiles are stored in `profiles.json`, appearance settings in `appearance.json`, and the latest imported palette in `themes/imported.json`. These paths are relative to `$XDG_CONFIG_HOME/LinRGB`, or `~/.config/LinRGB` by default.
-
-Choose **Noctalia Wallpaper** under **Settings → Theme** to follow `themes/wallpaper.json` automatically. Configure Noctalia to generate that file from the supplied Matugen template. LinRgb keeps the last valid palette if the JSON is temporarily missing or invalid, and uses LinRgb Dark if no valid palette has been read yet. This changes the interface only, not hardware lighting.
-
-## Hardware support
-
-Solid color has been confirmed on the ASUS ROG Astral GeForce RTX 5080 OC, the fixed Aura zone of the ASUS ROG Crosshair VIII Hero (Wi-Fi), and two ENE RGB memory modules at SMBus addresses `0x72` and `0x73`. The motherboard's addressable RGB headers are not yet supported.
-
-The Fractal Adjust Pro Hub (`36BC:1001`) can be selected in Windows Dynamic Lighting mode when it exposes the supported HID LampArray report layout. LinRgb sends the same color to all lamps on the hub. Other LampArray layouts are listed for identification only. Access to the hub's `/dev/hidraw*` node is required.
-
-Other Astral RTX 5080 variants are recognized by PCI ID, but are not verified on hardware. LinRgb rejects unrecognized ENE firmware. It also detects RGB LEDs exposed under `/sys/class/leds`, where driver support and permissions allow it. For RGBW devices, the white channel is kept off. See the [Linux multicolor LED documentation](https://docs.kernel.org/leds/leds-class-multicolor.html).
-
-## PCI catalog
-
-`data/openrgb-pci.tsv` is generated from OpenRGB's `REGISTER_I2C_PCI_DETECTOR` registrations. Entries are matched on all four PCI IDs. A match identifies a candidate device and controller family; it does not enable RGB writes.
-
-To regenerate the catalog from a clean OpenRGB checkout:
+With Nix Flakes enabled, run:
 
 ```bash
-python3 tools/import_openrgb_pci.py /path/to/OpenRGB data/openrgb-pci.tsv
+nix run github:Yuna404/LinRgb/v1.0.0-beta.1
 ```
 
-The generated file records the source revision. It covers exact PCI registrations, not USB detection or controller protocols. Python is not required at runtime.
+This downloads or builds the pinned beta and opens LinRgb. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
+
+## Install on NixOS with Flakes
+
+1. Add the release as an input in your existing `flake.nix`:
+
+   ```nix
+   inputs.linrgb.url = "github:Yuna404/LinRgb/v1.0.0-beta.1";
+   ```
+
+2. Include `linrgb` in your existing `outputs` arguments, for example `outputs = { nixpkgs, linrgb, ... }: ...`. In the `modules` list of your `nixpkgs.lib.nixosSystem` call, add this inline module. Keep your existing modules:
+
+   ```nix
+   ({ pkgs, ... }: let
+     package = linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default;
+   in {
+     environment.systemPackages = [ package ];
+     services.udev.packages = [ package ];
+   })
+   ```
+
+3. From the directory containing your system flake, lock the input and rebuild. Replace `YOUR_HOST` with the name under `nixosConfigurations`:
+
+   ```bash
+   nix flake lock
+   sudo nixos-rebuild switch --flake .#YOUR_HOST
+   ```
+
+4. Open **LinRgb** from the application menu or run `linrgb`. Reconnect the RGB USB controller after the rebuild so udev can apply the new permissions. Commit your updated `flake.lock` to keep the installation reproducible. To use a newer release, change the tag in the input URL before rebuilding.
+
+The udev rules grant the active local session access to the supported ASUS Aura and Fractal USB IDs. GPU and RAM controllers using I²C still require access to their specific `/dev/i2c-*` nodes. The package does not grant blanket I²C access. If **Apply** reports `Permission denied`, verify the adapter and its permissions instead of launching LinRgb with `sudo`.
+
+## Features
+
+### Devices and lighting
+
+- **Device selection:** search the list, select devices individually, or use **Select all**. The status area reports success or errors per device.
+- **Solid color:** set one steady color using the wheel or a six-digit HEX code. The brightness control adjusts its intensity.
+- **Two-color fade:** hold Color A, briefly fade to Color B, then repeat in reverse. The cycle duration covers the full round trip.
+- **Breathing:** pulse from dark to the selected color and back to dark. Optionally alternate between Colors A and B on successive breaths.
+- **Color cycle:** sweep through the color spectrum on the selected devices, with adjustable cycle duration and saturation.
+- **Effect preview:** watch a simulated graphics card and memory modules respond to your settings. The preview uses the same effect calculation as the selected devices and does not send any hardware commands.
+
+Click **Apply** to send the settings or replace a running effect. **Reset to white** stops the effect and sets the selected devices to solid white. It does not restore factory settings. LinRgb does not save lighting settings to the controllers.
+
+### Profiles, appearance, and desktop integration
+
+- **Profiles:** save both colors, the effect, cycle duration, and relevant options. Select a profile to load it without changing the LEDs. Use the profile’s menu to rename or delete it, then use **Apply** when you want to change the lighting.
+- **Settings:** choose a built-in theme, import a custom JSON palette, or set the interface zoom from 80% to 150%. English is the default. Restart LinRgb after switching between English and French.
+- **Live wallpaper colors:** select **Noctalia Wallpaper** to watch `themes/wallpaper.json`. Noctalia, Matugen, or another tool can generate it. LinRgb keeps the last valid palette if the file becomes invalid, and starts with LinRgb Dark if no valid palette exists. This changes the interface, not the LEDs. See the [theme template and format](design/README.md).
+- **System monitor:** view GPU load, VRAM, temperature, and system memory usage when available. The monitor appears in the maximized layout or opens from the **System monitor** section in the stacked layout.
+- **System tray:** on compatible desktops, the yellow window button hides LinRgb while the effect continues. Click the tray icon to reopen it. The red button quits.
+
+LinRgb creates `$XDG_CONFIG_HOME/LinRGB/themes/` on first launch, using `~/.config/LinRGB/themes/` by default. Saved profiles and appearance settings live in `profiles.json` and `appearance.json` in the same config directory. The last imported palette is stored as `themes/imported.json`.
+
+## Hardware support and limits
+
+- **Tested with solid color:** ASUS ROG Astral GeForce RTX 5080 OC, ASUS ROG Crosshair VIII Hero (Wi-Fi) fixed Aura zone, and two ENE RGB memory modules at SMBus addresses `0x72` and `0x73`. The motherboard’s addressable headers are not supported. Other Astral RTX 5080 variants are identified by PCI ID but not all have been verified on hardware. Unrecognized ENE firmware is rejected.
+- **Fractal Adjust Pro Hub (`36BC:1001`):** selectable in Windows Dynamic Lighting (WDL) mode when it exposes the supported HID LampArray report layout. LinRgb sends one color to all lamps on the hub. Other LampArray layouts are detected but not controlled. In the hub’s standalone mode, it will not appear as a WDL target.
+- **Linux multicolor LEDs:** LinRgb can use RGB devices exposed by the kernel under `/sys/class/leds`, subject to driver support and permissions. The white channel stays off on RGBW devices. See the [Linux multicolor LED documentation](https://docs.kernel.org/leds/leds-class-multicolor.html).
+- **PCI inventory:** an identified GPU is not necessarily controllable. The [OpenRGB-derived catalog](data/openrgb-pci.tsv) matches the four PCI IDs and lists candidate controller families; it never authorizes RGB writes by itself.
+
+## Develop and verify
+
+```bash
+nix develop -c cargo run --locked
+nix flake check --no-update-lock-file
+```
+
+The Nix package is defined in [`nix/package.nix`](nix/package.nix). To regenerate the identification catalog from a clean OpenRGB checkout, run `python3 tools/import_openrgb_pci.py /path/to/OpenRGB data/openrgb-pci.tsv`. The output records the upstream revision. Python is not needed to run LinRgb.
