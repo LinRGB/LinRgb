@@ -1,8 +1,8 @@
-%global commit d61b8963050aea6d8aa5128b396d6260d6360cfb
+%global commit 85db1703c58563a9f37ebe98a20e14bf999f686d
 
 Name:           linrgb
 Version:        1.0.0~beta.1
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Native RGB lighting control for Linux
 # Upstream has not declared a license; this spec is for local builds.
 License:        LicenseRef-NotDeclared
@@ -17,7 +17,7 @@ BuildRequires:  pkgconfig(gtk4)
 LinRgb controls supported USB HID and I2C lighting controllers through a GTK4 desktop interface.
 
 %prep
-printf '82c80a1545263e8a63ae9a9dc5c087e9dc24eba001a2f3598dbd3617b6ed475f  %%s\n' '%{SOURCE0}' | sha256sum --check
+printf '79286e7e745dcce45e5a3709abbb9e42cafcd2050e0a2a2525fc7aee448caa92  %%s\n' '%{SOURCE0}' | sha256sum --check
 %autosetup -n LinRgb-%{commit}
 
 %build
@@ -43,5 +43,8 @@ printf 'i2c-dev\n' > %{buildroot}%{_prefix}/lib/modules-load.d/linrgb.conf
 %{_prefix}/lib/modules-load.d/linrgb.conf
 
 %changelog
+* Wed Nov 18 2026 LinRgb maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.1-2
+- Update to 85db170 with experimental Aura ARGB, Corsair RAM and ENE support.
+
 * Wed Nov 18 2026 LinRgb maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.1-1
 - Add local Fedora packaging for the first LinRgb beta.

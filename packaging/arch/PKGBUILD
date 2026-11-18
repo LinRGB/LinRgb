@@ -1,6 +1,6 @@
 pkgname=linrgb
 pkgver=1.0.0beta.1
-pkgrel=1
+pkgrel=2
 pkgdesc='Native RGB lighting control for Linux'
 arch=('x86_64')
 url='https://github.com/Yuna404/LinRgb'
@@ -8,9 +8,9 @@ url='https://github.com/Yuna404/LinRgb'
 license=('LicenseRef-NotDeclared')
 depends=('gtk4')
 makedepends=('rust' 'pkgconf')
-_commit=d61b8963050aea6d8aa5128b396d6260d6360cfb
+_commit=85db1703c58563a9f37ebe98a20e14bf999f686d
 source=("linrgb-${_commit}.tar.gz::https://codeload.github.com/Yuna404/LinRgb/tar.gz/${_commit}")
-sha256sums=('82c80a1545263e8a63ae9a9dc5c087e9dc24eba001a2f3598dbd3617b6ed475f')
+sha256sums=('79286e7e745dcce45e5a3709abbb9e42cafcd2050e0a2a2525fc7aee448caa92')
 
 prepare() {
   cd "$srcdir/LinRgb-$_commit"

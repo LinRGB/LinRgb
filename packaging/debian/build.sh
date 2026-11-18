@@ -2,8 +2,8 @@
 set -eu
 
 recipe=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-revision=d61b8963050aea6d8aa5128b396d6260d6360cfb
-checksum=82c80a1545263e8a63ae9a9dc5c087e9dc24eba001a2f3598dbd3617b6ed475f
+revision=85db1703c58563a9f37ebe98a20e14bf999f686d
+checksum=79286e7e745dcce45e5a3709abbb9e42cafcd2050e0a2a2525fc7aee448caa92
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -13,4 +13,4 @@ tar -xzf "$work/source.tar.gz" -C "$work"
 cp -R "$recipe/debian" "$work/LinRgb-$revision/"
 chmod +x "$work/LinRgb-$revision/debian/rules"
 (cd "$work/LinRgb-$revision" && dpkg-buildpackage -b -us -uc)
-cp -- "$work/linrgb_1.0.0~beta.1-1_amd64.deb" .
+cp -- "$work/linrgb_1.0.0~beta.1-2_amd64.deb" .
