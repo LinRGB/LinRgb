@@ -53,6 +53,22 @@ inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
 
 Package-only installs and `nix run` do not activate system udev rules. On NixOS, you can register the package separately in `services.udev.packages`. The `v1.0.0-beta.1` tag predates the module and bundles USB rules only. Do not run LinRgb as root.
 
+## Install on Arch Linux
+
+The [PKGBUILD](packaging/arch/PKGBUILD) builds a local `x86_64` package from a pinned source archive. It is not an AUR package.
+
+```bash
+sudo pacman -Syu --needed base-devel git
+
+git clone https://github.com/Yuna404/LinRgb.git
+cd LinRgb/packaging/arch
+makepkg -si
+```
+
+Run `makepkg` as your normal user. It asks for administrator access when installing dependencies and the built package. The package includes the desktop launcher, targeted USB and I²C udev rules, and a configuration that loads `i2c-dev` at boot.
+
+Reboot after the first installation so the module and access rules apply. For immediate use, load `i2c-dev` with `sudo modprobe i2c-dev` and reconnect the supported USB controller. If the existing I²C nodes still report `Permission denied`, reboot. Launch `linrgb` without `sudo`.
+
 ## Features
 
 ### Devices and lighting
