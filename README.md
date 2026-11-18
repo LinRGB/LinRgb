@@ -67,7 +67,7 @@ Click **Apply** to send the settings or replace a running effect. **Reset to whi
 - **Settings:** choose a built-in theme, import a custom JSON palette, or set the interface zoom from 80% to 150%. English is the default. Restart LinRgb after switching between English and French.
 - **Live wallpaper colors:** select **Noctalia Wallpaper** to watch `themes/wallpaper.json`. Noctalia, Matugen, or another tool can generate it. LinRgb keeps the last valid palette if the file becomes invalid, and starts with LinRgb Dark if no valid palette exists. This changes the interface, not the LEDs. See the [theme template and format](design/README.md).
 - **System monitor:** view GPU load, VRAM, temperature, and system memory usage when available. The monitor appears in the maximized layout or opens from the **System monitor** section in the stacked layout.
-- **System tray:** on compatible desktops, the yellow window button hides LinRgb while the effect continues. Click the tray icon to reopen it. The red button quits.
+- **System tray:** on compatible desktops, closing the window hides LinRgb while the effect continues. Click the tray icon to reopen it. The yellow button minimizes the window normally. To stop the effect and quit, use **Settings → Quit LinRgb** or press `Ctrl+Q` in the main window. Closing the window quits normally when no compatible tray is available.
 
 LinRgb creates `$XDG_CONFIG_HOME/LinRGB/themes/` on first launch, using `~/.config/LinRGB/themes/` by default. Saved profiles and appearance settings live in `profiles.json` and `appearance.json` in the same config directory. The last imported palette is stored as `themes/imported.json`.
 

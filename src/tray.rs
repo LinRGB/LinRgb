@@ -74,11 +74,10 @@ pub fn install(window: &gtk::ApplicationWindow) -> Result<(), glib::Error> {
         return Err(error);
     }
     let registration = std::cell::Cell::new(Some(registration));
-    window.connect_close_request(move |_| {
+    window.connect_destroy(move |_| {
         if let Some(registration) = registration.take() {
             let _ = bus.unregister_object(registration);
         }
-        glib::Propagation::Proceed
     });
     Ok(())
 }

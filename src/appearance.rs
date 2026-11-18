@@ -192,13 +192,26 @@ pub fn install(window: &gtk::ApplicationWindow, header: &gtk::HeaderBar) {
     let dialog = gtk::Dialog::builder()
         .title(tr("Settings", "Paramètres"))
         .transient_for(window)
+        .destroy_with_parent(true)
         .modal(true)
         .hide_on_close(true)
         .default_width(390)
         .build();
     dialog.add_css_class("linrgb");
+    dialog.add_button(
+        tr("Quit LinRgb", "Quitter LinRgb"),
+        gtk::ResponseType::Reject,
+    );
     dialog.add_button(tr("Done", "Terminé"), gtk::ResponseType::Close);
-    dialog.connect_response(|dialog, _| dialog.hide());
+    let main_window = window.downgrade();
+    dialog.connect_response(move |dialog, response| {
+        dialog.hide();
+        if response == gtk::ResponseType::Reject
+            && let Some(window) = main_window.upgrade()
+        {
+            let _ = WidgetExt::activate_action(&window, "win.quit", None);
+        }
+    });
     let controls = gtk::Box::new(gtk::Orientation::Vertical, 8);
     controls.add_css_class("settings-panel");
     controls.append(&crate::label(tr("Theme", "Thème"), "heading"));

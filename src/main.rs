@@ -14,10 +14,10 @@ mod preview;
 mod profiles;
 mod tray;
 
-use gtk::{glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
 use i18n::tr;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     path::Path,
     rc::Rc,
     sync::{
@@ -42,6 +42,7 @@ fn main() -> glib::ExitCode {
     let app = gtk::Application::builder()
         .application_id("io.github.linrgb.LinRgb")
         .build();
+    app.set_accels_for_action("win.quit", &["<Primary>q"]);
     app.connect_activate(|app| {
         if let Some(window) = app.windows().into_iter().find(|window| window.is::<gtk::ApplicationWindow>()) {
             window.present();
@@ -61,16 +62,12 @@ fn main() -> glib::ExitCode {
         traffic.set_valign(gtk::Align::Center);
         let tray_available = tray::install(&window).is_ok();
         for (symbol, class, tooltip) in [
-            ("×", "close", tr("Close LinRgb", "Fermer LinRgb")),
-            (
-                "−",
-                "minimize",
-                if tray_available {
-                    tr("Minimize to the system tray", "Réduire dans la zone de notification")
-                } else {
-                    tr("Minimize window", "Réduire la fenêtre")
-                },
-            ),
+            ("×", "close", if tray_available {
+                tr("Close to the system tray", "Fermer dans la zone de notification")
+            } else {
+                tr("Close LinRgb", "Fermer LinRgb")
+            }),
+            ("−", "minimize", tr("Minimize window", "Réduire la fenêtre")),
             ("+", "maximize", tr("Maximize or restore window", "Agrandir ou restaurer la fenêtre")),
         ] {
             let button = gtk::Button::with_label(symbol);
@@ -83,7 +80,6 @@ fn main() -> glib::ExitCode {
                 if let Some(window) = weak.upgrade() {
                     match class {
                         "close" => window.close(),
-                        "minimize" if tray_available => window.set_visible(false),
                         "minimize" => window.minimize(),
                         _ if window.is_maximized() => window.unmaximize(),
                         _ => window.maximize(),
@@ -247,7 +243,22 @@ fn main() -> glib::ExitCode {
             None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>)>,
         ));
         let running = job.clone();
-        window.connect_close_request(move |_| {
+        let quitting = Rc::new(Cell::new(false));
+        let explicit_quit = quitting.clone();
+        let weak = window.downgrade();
+        let quit = gio::SimpleAction::new("quit", None);
+        quit.connect_activate(move |_, _| {
+            if let Some(window) = weak.upgrade() {
+                explicit_quit.set(true);
+                window.close();
+            }
+        });
+        window.add_action(&quit);
+        window.connect_close_request(move |window| {
+            if tray_available && !quitting.get() {
+                window.hide();
+                return glib::Propagation::Stop;
+            }
             if let Some((flag, _)) = running.borrow().as_ref() {
                 flag.store(true, Ordering::Relaxed);
             }
