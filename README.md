@@ -14,7 +14,7 @@ With Nix Flakes enabled, run:
 nix run github:Yuna404/LinRgb/main
 ```
 
-This downloads or builds the pinned beta and opens LinRgb. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
+This downloads or builds LinRgb from `main` and opens it. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
 
 ## Install with Flakes
 
@@ -26,21 +26,13 @@ inputs.linrgb = {
 };
 ```
 
-The release tag is fixed. To get newer fixes, use `github:Yuna404/LinRgb/main` as the input URL, run `nix flake update linrgb`, then rebuild. Restart LinRgb after rebuilding so the old process does not stay in the tray.
+The lock file pins the selected revision of `main`. To get newer fixes, run `nix flake update linrgb`, rebuild, and quit and reopen LinRgb so the old process does not stay in the tray.
 
 Keep LinRgb's pinned `nixpkgs` input instead of setting `inputs.linrgb.inputs.nixpkgs.follows = "nixpkgs"`. The beta was tested with its own pinned dependencies.
 
-Add this package to `home.packages` or `environment.systemPackages` in a module that has access to your flake `inputs`:
+### NixOS (recommended)
 
-```nix
-inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
-```
-
-Rebuild your system or Home Manager configuration, then launch **LinRgb** from the application menu or run `linrgb`.
-
-### NixOS module with device permissions
-
-On revisions that export `nixosModules.default`, import the module instead of adding the package manually. In your NixOS configuration, with `inputs` in scope:
+In your NixOS configuration, with `inputs` in scope, add the module to your existing `imports` list and enable it:
 
 ```nix
 imports = [ inputs.linrgb.nixosModules.default ];
@@ -49,7 +41,17 @@ programs.linrgb.enable = true;
 
 The module installs LinRgb, loads `i2c-dev`, and registers the bundled udev rules. The rules grant the active local session access to the supported USB controllers and specific Astral GPU and Crosshair SMBus adapters. An I²C permission applies to the entire matched adapter, not just its RGB controller. No blanket I²C access is granted.
 
-The `v1.0.0-beta.1` tag predates this module and bundles USB rules only. For that tag, add the package to `services.udev.packages` to enable USB access. Home Manager and `nix run` cannot install system udev rules. After a NixOS rebuild, reconnect USB devices or reboot if device access has not refreshed. Do not run LinRgb as root.
+Rebuild NixOS, then launch **LinRgb** from the application menu or run `linrgb`. You do not need to add the package or its rules separately. Reconnect USB devices or reboot if device access has not refreshed.
+
+### Package only (Home Manager or custom setup)
+
+In a module with `inputs` and `pkgs` in scope, add this package to `home.packages` or `environment.systemPackages`:
+
+```nix
+inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
+```
+
+Package-only installs and `nix run` do not activate system udev rules. On NixOS, you can register the package separately in `services.udev.packages`. The `v1.0.0-beta.1` tag predates the module and bundles USB rules only. Do not run LinRgb as root.
 
 ## Features
 
