@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="only dark">
+<meta name="darkreader-lock">
+<title>LinRgb — Lighting Studio</title>
+<style>
+  :root {
+    color-scheme: only dark;
+    --base: #141414; --surface: #1d1d1d; --raised: #2a2a2a;
+    --text: #f5f5f5; --muted: #bdbdbd; --accent: #73e4c6;
+    --accent-ink: #0b3027; --accent-label: #9debd8;
+    --line: #ffffff24; --shadow: #0009; --wall: #0b0b0b;
+    font: 15px/1.45 'Adwaita Sans', 'Cantarell', system-ui, sans-serif;
+  }
+  :root[data-theme="light"] {
+    color-scheme: only light;
+    --base: #ffffff; --surface: #ffffff; --raised: #f0f0f0;
+    --text: #191919; --muted: #535353; --accent: #087365; --accent-ink: #fff;
+    --accent-label: #07584e; --line: #0000001f; --shadow: #0003; --wall: #eeeeee;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; min-height: 100vh; color: var(--text); background: radial-gradient(ellipse at 18% 0%, color-mix(in srgb, var(--accent) 22%, var(--wall)), transparent 55%), var(--wall); }
+  button, input, a { font: inherit; }
+  button, .pill, input:not([type="checkbox"]):not([type="range"]) { border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); padding: 9px 13px; }
+  button, a, label:has(input[type="checkbox"]) { cursor: pointer; }
+  button, a { transition: background .16s ease, transform .16s ease; }
+  button:hover, .nav:hover { background: color-mix(in srgb, var(--raised) 86%, var(--text)); }
+  button:active { transform: translateY(1px); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .window { max-width: 1250px; margin: clamp(12px, 4vw, 60px) auto; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; background: color-mix(in srgb, var(--base) 89%, transparent); backdrop-filter: blur(24px); box-shadow: 0 26px 85px var(--shadow); }
+  .window.expanded { max-width: none; width: calc(100% - 16px); margin: 8px auto; }
+  .titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; min-height: 57px; padding: 8px 18px; background: color-mix(in srgb, var(--surface) 80%, transparent); border-bottom: 1px solid var(--line); }
+  .titlebar strong { font-size: 13px; }
+  .traffic { display: flex; gap: 8px; }
+  .traffic button { display: grid; place-items: center; width: 15px; height: 15px; padding: 0; border-radius: 50%; border: 1px solid #0002; color: #151515; font: 700 11px/1 system-ui; }
+  .traffic button span { opacity: 0; }
+  .traffic:hover span, .traffic button:focus-visible span { opacity: 1; }
+  .traffic .red { background: #ed333b; } .traffic .yellow { background: #f6d32d; } .traffic .green { background: #33d17a; }
+  .title-actions { display: flex; justify-content: end; gap: 6px; }
+  .theme-select { min-width: 0; max-width: 10rem; padding: 5px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: var(--text); font: inherit; font-size: .82rem; }
+  @media (max-width: 560px) { .titlebar { grid-template-columns: auto 1fr; } .titlebar > strong { display: none; } .theme-select { max-width: 7.5rem; } }
+  .icon { padding: 6px 10px; line-height: 1.4; }
+  .shell { display: grid; grid-template-columns: 205px minmax(0, 1fr); }
+  .shell.sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { padding: 22px 14px; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 75%, transparent); display: flex; flex-direction: column; gap: 25px; }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 0 7px; }
+  .logo { width: 37px; height: 37px; display: grid; place-items: center; border-radius: 13px; color: var(--accent-label); background: color-mix(in srgb, var(--accent) 20%, var(--raised)); border: 1px solid var(--line); font-size: 20px; }
+  .brand strong, small { display: block; }
+  small, .muted { color: var(--muted); }
+  .eyebrow { font-size: .72rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; color: var(--accent-label); }
+  nav { display: grid; gap: 5px; }
+  .nav { display: flex; gap: 10px; border: 1px solid transparent; padding: 8px 10px; border-radius: 13px; color: var(--text); text-decoration: none; }
+  .nav.active { background: color-mix(in srgb, var(--accent) 20%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
+  .rail-footer { margin-top: auto; padding: 12px; border: 1px solid var(--line); border-radius: 17px; font-size: .82rem; }
+  main { min-width: 0; padding: clamp(15px, 3vw, 33px); display: grid; gap: 20px; }
+  .hero { padding: clamp(20px, 3vw, 31px); border: 1px solid var(--line); border-radius: 26px; background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 60%), color-mix(in srgb, var(--surface) 85%, transparent); }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: clamp(2rem, 5vw, 3.1rem); letter-spacing: -.055em; line-height: 1.05; margin: 7px 0 9px; }
+  h2 { font-size: 1.23rem; letter-spacing: -.025em; }
+  h3 { font-size: .93rem; }
+  .hero p { max-width: 55ch; }
+  .workspace { display: grid; grid-template-columns: minmax(260px, .85fr) minmax(300px, 1.15fr); gap: 17px; align-items: start; }
+  .card { min-width: 0; padding: clamp(14px, 2vw, 21px); border: 1px solid var(--line); border-radius: 25px; background: color-mix(in srgb, var(--surface) 87%, transparent); backdrop-filter: blur(18px); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+  .pill { font-size: .78rem; padding: 4px 9px; white-space: nowrap; }
+  .search { display: flex; gap: 7px; margin-bottom: 12px; }
+  .search input { width: 100%; min-width: 0; }
+  .search button { white-space: nowrap; padding-inline: 9px; }
+  .devices { display: grid; gap: 7px; }
+  .device { display: grid; grid-template-columns: auto auto minmax(0,1fr) auto; gap: 9px; align-items: center; min-height: 57px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--base); }
+  .device:has(:checked) { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); }
+  input[type="checkbox"], input[type="range"] { accent-color: var(--accent); }
+  .device-icon { color: var(--accent-label); font-size: 17px; }
+  .device strong { display: block; font-size: .86rem; }
+  .device small { font-size: .72rem; }
+  .device-light { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); background: var(--muted); }
+  .toggle { display: flex; gap: 8px; align-items: center; white-space: nowrap; color: var(--muted); font-size: .83rem; }
+  .toggle input { appearance: none; width: 35px; height: 21px; margin: 0; border: 1px solid var(--line); border-radius: 99px; background: var(--raised); cursor: pointer; }
+  .toggle input::after { content: ''; display: block; width: 13px; height: 13px; margin: 3px; border-radius: 50%; background: var(--muted); transition: transform .16s ease; }
+  .toggle input:checked { background: var(--accent); }
+  .toggle input:checked::after { transform: translateX(14px); background: #fff; }
+  .pickers { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+  .pickers:has(#second[hidden]) { grid-template-columns: minmax(0,1fr); }
+  .picker { min-width: 0; display: grid; justify-items: center; gap: 9px; padding: 12px 8px; border-radius: 20px; border: 1px solid var(--line); background: var(--base); }
+  .picker label { width: min(100%, 170px); font-size: .78rem; color: var(--muted); }
+  .picker input { display: block; width: 100%; margin: 3px 0 0; }
+  .picker [data-hex] { font-family: ui-monospace, monospace; letter-spacing: .03em; }
+  .picker [aria-invalid="true"] { border-color: #ed333b !important; }
+  .wheel { --x: .5; --y: .5; width: min(100%, 146px); aspect-ratio: 1; border-radius: 50%; position: relative; touch-action: none; cursor: crosshair; background: radial-gradient(circle closest-side, #fff, transparent), conic-gradient(from 90deg, red, yellow, lime, cyan, blue, magenta, red); box-shadow: inset 0 0 0 1px #0003; }
+  .wheel::after { content: ''; position: absolute; top: calc(var(--y) * 100%); left: calc(var(--x) * 100%); transform: translate(-50%, -50%); width: 15px; height: 15px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 0 2px #000b; background: var(--sample); }
+  .cycle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .82rem; }
+  .cycle input { width: 70px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .actions .primary { background: var(--accent); color: var(--accent-ink); font-weight: 750; }
+  .actions .primary:hover { background: color-mix(in srgb, var(--accent) 92%, var(--accent-ink)); }
+  #status { min-height: 1.5em; margin-top: 11px; font-size: .8rem; }
+  .restore { margin: 40vh auto 0; text-align: center; }
+  @media (max-width: 900px) { .shell { grid-template-columns: 158px minmax(0,1fr); } .workspace { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 560px) { .window { width: calc(100% - 16px); margin: 8px auto; } .shell { display: block; } .sidebar { border-right: none; border-bottom: 1px solid var(--line); padding: 10px 15px; gap: 7px; } .sidebar nav { display: flex; flex-wrap: wrap; } .rail-footer { display: none; } .titlebar { padding-inline: 11px; } }
+  @media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="window" id="window">
+  <header class="titlebar">
+    <div class="traffic" aria-label="Preview window controls">
+      <button type="button" class="red" id="close" aria-label="Close preview" title="Close preview"><span aria-hidden="true">×</span></button>
+      <button type="button" class="yellow" id="minimize" aria-label="Minimize preview" title="Minimize preview"><span aria-hidden="true">−</span></button>
+      <button type="button" class="green" id="maximize" aria-label="Expand preview" aria-pressed="false" title="Expand or restore preview"><span aria-hidden="true">+</span></button>
+    </div>
+    <strong>LinRgb</strong>
+    <div class="title-actions">
+      <button type="button" class="icon" id="sidebar-button" aria-controls="sidebar" aria-expanded="true" title="Toggle sidebar" aria-label="Toggle sidebar">◫</button>
+      <select id="theme" class="theme-select" aria-label="Appearance">
+        <option value="system">System</option>
+        <option value="light">LinRgb Light</option>
+        <option value="dark">LinRgb Dark</option>
+        <option value="custom" id="custom-theme" disabled>Custom</option>
+        <option value="import">Import theme…</option>
+      </select>
+      <input type="file" id="theme-file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+  <div class="shell" id="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="logo" aria-hidden="true">✦</span><div><strong>LinRgb</strong><small>Lighting Studio</small></div></div>
+      <nav aria-label="Workspace">
+        <span class="eyebrow">Workspace</span>
+        <a class="nav active" href="#devices"><span aria-hidden="true">▤</span> Devices</a>
+        <a class="nav" href="#lighting"><span aria-hidden="true">◉</span> Lighting</a>
+      </nav>
+      <p class="rail-footer"><strong>Design preview</strong><small>No hardware access</small></p>
+    </aside>
+    <main>
+      <section class="hero" aria-labelledby="headline">
+        <span class="eyebrow">Lighting Studio / Workspace</span>
+        <h1 id="headline">Make it glow.</h1>
+        <p class="muted">Set a solid color or blend two colors across your selected devices.</p>
+      </section>
+      <div class="workspace">
+        <section class="card" id="devices" aria-labelledby="devices-title">
+          <div class="card-head"><h2 id="devices-title">Devices</h2><span id="count" class="pill" aria-live="polite"></span></div>
+          <div class="search"><input id="search" type="search" aria-label="Find a device" placeholder="Find a device…"><button type="button" id="select-all">Select all</button></div>
+          <div class="devices">
+            <label class="device"><input type="checkbox" checked><span class="device-icon" aria-hidden="true">▣</span><span><strong>ROG Astral RTX 5080</strong><small>Graphics card · ENE Aura</small></span><span class="device-light" aria-hidden="true"></span></label>
+            <label class="device"><input type="checkbox" checked><span class="device-icon" aria-hidden="true">▦</span><span><strong>Crosshair VIII Hero</strong><small>Motherboard · Aura zone</small></span><span class="device-light" aria-hidden="true"></span></label>
+            <label class="device"><input type="checkbox"><span class="device-icon" aria-hidden="true">▥</span><span><strong>ENE Memory 1</strong><small>Memory · 0x72</small></span><span class="device-light" aria-hidden="true"></span></label>
+            <label class="device"><input type="checkbox"><span class="device-icon" aria-hidden="true">▥</span><span><strong>ENE Memory 2</strong><small>Memory · 0x73</small></span><span class="device-light" aria-hidden="true"></span></label>
+          </div>
+          <p id="empty" class="muted" hidden>No devices match your search.</p>
+        </section>
+        <section class="card" id="lighting" aria-labelledby="lighting-title">
+          <div class="card-head"><h2 id="lighting-title">Lighting</h2><label class="toggle"><input type="checkbox" role="switch" id="fade" aria-controls="second cycle" checked> Two-color fade</label></div>
+          <div class="pickers" id="pickers"></div>
+          <label class="cycle" id="cycle">A → B → A <span class="muted">Cycle (seconds)</span><input id="seconds" type="number" value="6" min="2" max="60" step="1" required></label>
+          <div class="actions"><button type="button" class="primary" id="apply">Apply</button><button type="button" id="reset">Reset to white</button></div>
+          <p id="status" class="muted" role="status">Preview only. No commands are sent to devices.</p>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="restore" class="restore" hidden><button type="button" id="reopen">Reopen LinRgb preview</button></div>
+<template id="picker-template">
+  <section class="picker"><h3></h3><div class="wheel" tabindex="0" aria-label="Color wheel. Use the arrow keys to adjust color."></div><label>HEX <input data-hex type="text" spellcheck="false" autocomplete="off" size="8"></label><label>Brightness <input data-bright type="range" min="0" max="100" step="any"></label></section>
+</template>
+<script>
+  const $ = id => document.getElementById(id);
+  const rows = [...document.querySelectorAll('.device')];
+  const selected = () => rows.filter(row => row.querySelector('input').checked);
+  function updateDevices() {
+    const term = $('search').value.trim().toLowerCase();
+    for (const row of rows) row.hidden = !row.textContent.toLowerCase().includes(term);
+    $('empty').hidden = rows.some(row => !row.hidden);
+    $('count').textContent = `${selected().length} selected`;
+    $('select-all').textContent = selected().length === rows.length ? 'Clear all' : 'Select all';
+  }
+  $('search').addEventListener('input', updateDevices);
+  for (const row of rows) row.addEventListener('change', updateDevices);
+  $('select-all').addEventListener('click', () => {
+    const check = selected().length !== rows.length;
+    for (const row of rows) row.querySelector('input').checked = check;
+    updateDevices();
+  });
+  updateDevices();
+
+  const clamp = n => Math.max(0, Math.min(1, n));
+  const validHex = value => /^#?[0-9a-f]{6}$/i.test(value.trim());
+  const normalize = value => '#' + value.trim().replace(/^#/, '').toUpperCase();
+  function makePicker(title, id, initial) {
+    const picker = $('picker-template').content.firstElementChild.cloneNode(true);
+    picker.id = id;
+    picker.querySelector('h3').textContent = title;
+    const wheel = picker.querySelector('.wheel');
+    const input = picker.querySelector('[data-hex]');
+    const bright = picker.querySelector('[data-bright]');
+    wheel.setAttribute('aria-label', `${title} wheel: use arrow keys to adjust color`);
+    input.setAttribute('aria-label', `${title} HEX code`);
+    bright.setAttribute('aria-label', `${title} brightness`);
+    let x = 1, y = 0;
+    function display() {
+      wheel.style.setProperty('--x', (1 + x) / 2);
+      wheel.style.setProperty('--y', (1 + y) / 2);
+      wheel.style.setProperty('--sample', normalize(input.value));
+      input.removeAttribute('aria-invalid');
+    }
+    function syncFromHex() {
+      if (!validHex(input.value)) { input.setAttribute('aria-invalid', 'true'); return; }
+      const [r, g, b] = normalize(input.value).slice(1).match(/../g).map(n => parseInt(n, 16) / 255);
+      const max = Math.max(r, g, b), delta = max - Math.min(r, g, b);
+      const h = delta === 0 ? 0 : max === r ? (g - b) / delta : max === g ? 2 + (b - r) / delta : 4 + (r - g) / delta;
+      const s = max ? delta / max : 0;
+      x = Math.cos(h * Math.PI / 3) * s;
+      y = Math.sin(h * Math.PI / 3) * s;
+      bright.value = max * 100;
+      display();
+    }
+    function setPoint(nx, ny) {
+      const norm = Math.max(1, Math.hypot(nx, ny));
+      x = nx / norm; y = ny / norm;
+      const h = ((Math.atan2(y, x) / Math.PI * 3) + 6) % 6;
+      const s = clamp(Math.hypot(x, y)), v = Number(bright.value) / 100;
+      input.value = '#' + [5, 3, 1].map(n => {
+        const k = (n + h) % 6;
+        return Math.round(255 * v * (1 - s * clamp(Math.min(k, 4 - k)))).toString(16).padStart(2, '0');
+      }).join('').toUpperCase();
+      display();
+    }
+    function move(event) {
+      const rect = wheel.getBoundingClientRect();
+      setPoint((event.clientX - rect.left) / rect.width * 2 - 1, (event.clientY - rect.top) / rect.height * 2 - 1);
+    }
+    wheel.addEventListener('pointerdown', event => { if (event.button !== 0) return; wheel.setPointerCapture(event.pointerId); move(event); });
+    wheel.addEventListener('pointermove', event => { if (wheel.hasPointerCapture(event.pointerId)) move(event); });
+    wheel.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      setPoint(x + (Number(event.key === 'ArrowRight') - Number(event.key === 'ArrowLeft')) * .05,
+        y + (Number(event.key === 'ArrowDown') - Number(event.key === 'ArrowUp')) * .05);
+    });
+    bright.addEventListener('input', () => setPoint(x, y));
+    input.addEventListener('input', syncFromHex);
+    input.value = initial;
+    syncFromHex();
+    $('pickers').append(picker);
+    return input;
+  }
+  const first = makePicker('Color A', 'first', '#3584E4');
+  const second = makePicker('Color B', 'second', '#9141AC');
+  $('fade').addEventListener('change', () => { $('second').hidden = $('cycle').hidden = !$('fade').checked; });
+  let animations = [];
+  function apply(reset) {
+    const targets = selected();
+    if (!targets.length) { $('status').textContent = 'Select at least one device.'; return; }
+    const fade = !reset && $('fade').checked;
+    for (const field of reset ? [] : fade ? [first, second] : [first]) {
+      if (!validHex(field.value)) { field.setAttribute('aria-invalid', 'true'); field.focus(); $('status').textContent = 'Enter a six-digit HEX color, such as #3584E4.'; return; }
+    }
+    if (fade && !$('seconds').reportValidity()) return;
+    const a = reset ? '#FFFFFF' : normalize(first.value);
+    const b = fade ? normalize(second.value) : a;
+    for (const animation of animations) animation.cancel();
+    animations = [];
+    for (const row of targets) {
+      const light = row.querySelector('.device-light');
+      light.style.backgroundColor = a;
+      if (fade && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        animations.push(light.animate([{backgroundColor: a}, {backgroundColor: b}, {backgroundColor: a}], {duration: Number($('seconds').value) * 1000, iterations: Infinity, easing: 'ease-in-out'}));
+      }
+    }
+    $('status').textContent = `${fade ? 'Fade' : 'Solid color'} previewed on ${targets.length} ${targets.length === 1 ? 'device' : 'devices'}.`;
+  }
+  $('apply').addEventListener('click', () => apply(false));
+  $('reset').addEventListener('click', () => apply(true));
+  const themeRoles = ['base', 'surface', 'raised', 'text', 'muted', 'accent', 'accent-ink', 'accent-label', 'wall'];
+  const systemLight = matchMedia('(prefers-color-scheme: light)');
+  const storageKey = 'linrgb-preview-theme';
+  let appearance = 'system';
+  let customTheme = null;
+  function validateTheme(value) {
+    if (!value || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 48 || !['light', 'dark'].includes(value.mode)) return null;
+    const colors = value.colors;
+    if (!colors || !themeRoles.every(role => Object.hasOwn(colors, role) && typeof colors[role] === 'string' && /^#[\da-f]{6}$/i.test(colors[role]))) return null;
+    return {name: value.name.trim(), mode: value.mode, colors: Object.fromEntries(themeRoles.map(role => [role, colors[role]]))};
+  }
+  function renderTheme() {
+    const root = document.documentElement;
+    const palette = appearance === 'custom' ? customTheme : null;
+    root.dataset.theme = palette?.mode || (appearance === 'system' ? (systemLight.matches ? 'light' : 'dark') : appearance);
+    document.querySelector('meta[name="color-scheme"]').content = `only ${root.dataset.theme}`;
+    for (const role of themeRoles) {
+      if (palette) root.style.setProperty(`--${role}`, palette.colors[role]);
+      else root.style.removeProperty(`--${role}`);
+    }
+    $('custom-theme').disabled = !customTheme;
+    $('custom-theme').textContent = customTheme?.name || 'Custom';
+    $('theme').value = appearance;
+  }
+  function saveTheme() {
+    try { localStorage.setItem(storageKey, JSON.stringify({appearance, customTheme})); } catch { /* Storage may be unavailable for local files. */ }
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    customTheme = validateTheme(saved?.customTheme);
+    if (['system', 'light', 'dark'].includes(saved?.appearance) || (saved?.appearance === 'custom' && customTheme)) appearance = saved.appearance;
+  } catch { /* Keep the system default if storage is unavailable or invalid. */ }
+  renderTheme();
+  systemLight.addEventListener('change', renderTheme);
+  $('theme').addEventListener('change', () => {
+    const action = $('theme').value;
+    if (action === 'import') {
+      $('theme').value = appearance;
+      $('theme-file').click();
+      return;
+    }
+    appearance = action;
+    renderTheme();
+    saveTheme();
+  });
+  $('theme-file').addEventListener('change', async () => {
+    const file = $('theme-file').files[0];
+    $('theme-file').value = '';
+    if (!file) return;
+    try {
+      if (file.size > 16384) throw Error('Theme file is too large');
+      const imported = validateTheme(JSON.parse(await file.text()));
+      if (!imported) throw Error('Invalid theme');
+      customTheme = imported;
+      appearance = 'custom';
+      renderTheme();
+      saveTheme();
+      $('status').textContent = `Theme loaded: ${customTheme.name}.`;
+    } catch {
+      $('status').textContent = 'Invalid theme file. Import a LinRgb JSON theme with all nine HEX colors.';
+    }
+  });
+  $('sidebar-button').addEventListener('click', () => {
+    const hide = !$('sidebar').hidden;
+    $('sidebar').hidden = hide;
+    $('shell').classList.toggle('sidebar-hidden', hide);
+    $('sidebar-button').setAttribute('aria-expanded', String(!hide));
+  });
+  for (const link of document.querySelectorAll('.nav')) link.addEventListener('click', () => {
+    document.querySelector('.nav.active').classList.remove('active');
+    link.classList.add('active');
+  });
+  function hidePreview() { $('window').hidden = true; $('restore').hidden = false; $('reopen').focus(); }
+  $('close').addEventListener('click', hidePreview);
+  $('minimize').addEventListener('click', hidePreview);
+  $('reopen').addEventListener('click', () => { $('restore').hidden = true; $('window').hidden = false; $('minimize').focus(); });
+  $('maximize').addEventListener('click', () => {
+    const expanded = $('window').classList.toggle('expanded');
+    $('maximize').setAttribute('aria-pressed', String(expanded));
+  });
+</script>
+</body>
+</html>

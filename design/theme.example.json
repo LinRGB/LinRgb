@@ -1,0 +1,15 @@
+{
+  "name": "Lavender Dusk",
+  "mode": "dark",
+  "colors": {
+    "base": "#1C1924",
+    "surface": "#262131",
+    "raised": "#342D43",
+    "text": "#F4EEFC",
+    "muted": "#C7BAD7",
+    "accent": "#D8BBFF",
+    "accent-ink": "#2C1747",
+    "accent-label": "#E8D3FF",
+    "wall": "#14111C"
+  }
+}

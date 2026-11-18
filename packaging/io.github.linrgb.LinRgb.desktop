@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=LinRgb
+Comment=Control RGB lighting on Linux
+Comment[fr]=Contrôler l’éclairage RGB sous Linux
+Exec=linrgb
+Icon=io.github.linrgb.LinRgb
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=RGB;lighting;LED;
+StartupNotify=true

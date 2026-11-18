@@ -1,0 +1,106 @@
+.linrgb {
+  background: @linrgb_wall;
+  color: @linrgb_text;
+  font-family: Inter, "Adwaita Sans", Cantarell, sans-serif;
+}
+.linrgb .title-1 { font-size: 1.85em; font-weight: 700; }
+.linrgb .title-2 { font-size: 1.30em; font-weight: 700; }
+.linrgb .heading { font-weight: 650; }
+.linrgb .settings-panel { padding: 0.9em; }
+.linrgb .settings-panel, .linrgb .settings-panel * { transition: none; }
+.linrgb .color-wheel { min-width: 11.4em; min-height: 11.4em; }
+.linrgb headerbar {
+  background: @linrgb_surface;
+  color: @linrgb_text;
+  padding: 5px 12px;
+  box-shadow: none;
+  border-bottom: 1px solid alpha(@linrgb_text, 0.12);
+}
+.linrgb .sidebar {
+  padding: 20px 14px;
+  min-width: 250px;
+  background: @linrgb_surface;
+  border-right: 1px solid alpha(@linrgb_text, 0.10);
+}
+.linrgb .sidebar-photo { min-width: 2.7em; min-height: 2.7em; }
+.linrgb .sidebar-avatar {
+  padding: 0.75em;
+  border-radius: 99px;
+  background: mix(@linrgb_surface, @linrgb_accent, 0.19);
+  color: @linrgb_accent-label;
+}
+.linrgb .profiles-panel {
+  padding: 0.7em;
+  border-radius: 28px;
+  background: mix(@linrgb_surface, #000, 0.10);
+  border: 1px solid alpha(@linrgb_text, 0.10);
+}
+.linrgb .sidebar-item {
+  border-radius: 16px;
+  padding: 0.6em 0.9em;
+  background: mix(@linrgb_surface, @linrgb_accent, 0.17);
+  color: @linrgb_text;
+}
+.linrgb .profile-list { background: transparent; }
+.linrgb .profile-list row {
+  padding: 0.6em 0.9em;
+  margin-bottom: 0.22em;
+  border-radius: 16px;
+  color: @linrgb_text;
+}
+.linrgb .profile-list row:hover { background: @linrgb_raised; }
+.linrgb .profile-list row:selected {
+  background: mix(@linrgb_surface, @linrgb_accent, 0.22);
+  color: @linrgb_text;
+}
+.linrgb .workspace { padding: 20px; }
+.linrgb .hero, .linrgb .device-card, .linrgb .lighting-card, .linrgb .preview-card {
+  padding: 1.28em;
+  border: 1px solid alpha(@linrgb_text, 0.13);
+  border-radius: 26px;
+  background: @linrgb_surface;
+}
+.linrgb .hero {
+  background: linear-gradient(112deg, @linrgb_surface 28%, mix(@linrgb_surface, @linrgb_accent, 0.16));
+}
+.linrgb .eyebrow { font-size: 0.82em; font-weight: bold; color: @linrgb_accent-label; }
+.linrgb .dim-label { color: @linrgb_muted; opacity: 1; }
+.linrgb .device-row, .linrgb .picker-card {
+  padding: 0.68em;
+  border: 1px solid alpha(@linrgb_text, 0.12);
+  border-radius: 20px;
+  background: @linrgb_base;
+  color: @linrgb_text;
+}
+.linrgb .device-row:checked { border-color: alpha(@linrgb_accent, 0.66); }
+.linrgb checkbutton check:checked { background: @linrgb_accent; color: @linrgb_accent-ink; }
+.linrgb button, .linrgb entry, .linrgb spinbutton {
+  border-radius: 16px;
+  background: @linrgb_raised;
+  color: @linrgb_text;
+  border-color: alpha(@linrgb_text, 0.13);
+  box-shadow: none;
+}
+.linrgb dropdown popover > contents,
+.linrgb combobox popover > contents,
+.linrgb menubutton popover > contents { border-radius: 20px; }
+.linrgb dropdown popover row { border-radius: 14px; }
+.linrgb button:hover { background: mix(@linrgb_raised, @linrgb_text, 0.10); }
+.linrgb button.suggested-action { background: @linrgb_accent; color: @linrgb_accent-ink; }
+.linrgb button.suggested-action:hover { background: mix(@linrgb_accent, @linrgb_accent-ink, 0.09); }
+.linrgb entry.error { border-color: #e75555; }
+.linrgb scale trough { background: @linrgb_raised; }
+.linrgb scale highlight { background: @linrgb_accent; }
+.linrgb button.traffic {
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0;
+  border-radius: 99px;
+  color: #1c1c1c;
+  font-size: 0.83em;
+  font-weight: bold;
+}
+.linrgb button.close { background: #ed5e60; }
+.linrgb button.minimize { background: #f3c451; }
+.linrgb button.maximize { background: #5bcc79; }
+.linrgb button.traffic:hover { opacity: 0.8; }

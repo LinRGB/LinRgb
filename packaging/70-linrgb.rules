@@ -1,0 +1,3 @@
+# Grant the active local session access only to supported USB lighting controllers.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="18f3", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="36bc", ATTRS{idProduct}=="1001", TAG+="uaccess"
