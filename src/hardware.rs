@@ -1,32 +1,37 @@
-use std::{fs, io, path::Path};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
-pub const ASTRAL: &str = "ASUS ROG Astral GeForce RTX 5080";
-
-// ASUS RTX 5080 Astral variants using the ENE controller at 0x67, from OpenRGB's PCI registry.
-const ASTRAL_SUBSYSTEMS: [&str; 4] = ["0x89de", "0x89df", "0x8a2b", "0x8a2c"];
-
-pub fn detect(root: &Path) -> io::Result<Vec<String>> {
+pub fn detect_ene_gpus(root: &Path) -> io::Result<Vec<(PathBuf, &'static str)>> {
     let mut matches = Vec::new();
     for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        let ids = [
-            ("vendor", "0x10de"),
-            ("device", "0x2c02"),
-            ("subsystem_vendor", "0x1043"),
-        ];
-        if ids.iter().all(|(key, expected)| {
-            fs::read_to_string(entry.path().join(key)).is_ok_and(|id| id.trim() == *expected)
-        }) && fs::read_to_string(entry.path().join("subsystem_device"))
-            .is_ok_and(|id| ASTRAL_SUBSYSTEMS.contains(&id.trim()))
-        {
-            matches.push(entry.file_name().to_string_lossy().into_owned());
+        let path = entry?.path();
+        if let Some(name) = nvidia_ene_name(&path) {
+            matches.push((path, name));
         }
     }
-    matches.sort();
+    matches.sort_unstable();
     Ok(matches)
 }
 
-// Inventory only: none of these IDs authorizes an RGB write.
+pub fn nvidia_ene_name(path: &Path) -> Option<&'static str> {
+    let [vendor, device, subvendor, subsystem] =
+        ["vendor", "device", "subsystem_vendor", "subsystem_device"]
+            .map(|key| fs::read_to_string(path.join(key)).ok());
+    let ids = [
+        vendor.as_deref()?.trim(),
+        device.as_deref()?.trim(),
+        subvendor.as_deref()?.trim(),
+        subsystem.as_deref()?.trim(),
+    ];
+    if ids[0] != "0x10de" || ids[2] != "0x1043" {
+        return None;
+    }
+    pci_candidates(ids).find_map(|(family, name)| (family == "ENESMBusController").then_some(name))
+}
+
+// A catalogue match is not proof of compatibility; drivers must validate the controller.
 fn pci_candidates(ids: [&str; 4]) -> impl Iterator<Item = (&'static str, &'static str)> {
     include_str!("../data/openrgb-pci.tsv")
         .lines()
@@ -71,7 +76,15 @@ pub fn other_graphics(root: &Path, supported: &[String]) -> io::Result<Vec<Strin
             names.insert(name);
             families.insert(family);
         }
-        let name = if names.is_empty() {
+        let name = if [
+            vendor.trim(),
+            device.trim(),
+            subvendor.trim(),
+            subsystem.trim(),
+        ] == ["0x1002", "0x7550", "0x1eae", "0x8811"]
+        {
+            "XFX Radeon RX 9070 XT Mercury".to_owned()
+        } else if names.is_empty() {
             brand.to_owned()
         } else {
             format!(
@@ -128,7 +141,12 @@ mod tests {
                     fs::write(path.join(key), format!("{value}\n"))?;
                 }
             }
-            detect(&root)
+            detect_ene_gpus(&root).map(|cards| {
+                cards
+                    .into_iter()
+                    .map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+            })
         })();
         fs::remove_dir_all(root)?;
         assert_eq!(result?, ["0000:01:00.0", "0000:03:00.0"]);

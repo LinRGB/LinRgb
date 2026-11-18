@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
@@ -8,9 +8,11 @@ use std::{
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Target {
-    Astral,
+    EneGpu(PathBuf),
     Board,
+    BoardArgb,
     Ram(u16),
+    Corsair(u16),
     Kernel(PathBuf),
     LampArray(PathBuf),
 }
@@ -20,15 +22,17 @@ type Writer = Box<dyn FnMut([u8; 3]) -> Result<(), Box<dyn Error>>>;
 impl Target {
     fn open(self) -> Result<Writer, Box<dyn Error>> {
         match self {
-            Self::Astral => {
-                let mut device = crate::astral::open(Path::new(crate::PCI))?;
+            Self::EneGpu(card) => {
+                let mut device = crate::astral::open(&card)?;
                 Ok(Box::new(move |rgb| device.set(rgb)))
             }
+            Self::Corsair(address) => Ok(Box::new(crate::corsair::open(address)?)),
             Self::Ram(address) => {
                 let mut device = crate::board::open_ram(address)?;
                 Ok(Box::new(move |rgb| device.set(rgb)))
             }
             Self::Board => Ok(Box::new(crate::board::open()?)),
+            Self::BoardArgb => Ok(Box::new(crate::board::open_argb()?)),
             Self::Kernel(path) => {
                 let mut write = crate::kernel_led::open(&path)?;
                 Ok(Box::new(move |rgb| Ok(write(rgb)?)))
@@ -127,9 +131,9 @@ type Targets = Vec<(String, Target)>;
 
 fn transport_group(target: &Target) -> usize {
     match target {
-        Target::Astral => 0,
-        Target::Ram(_) => 1,
-        Target::Board => 2,
+        Target::EneGpu(_) => 0,
+        Target::Ram(_) | Target::Corsair(_) => 1,
+        Target::Board | Target::BoardArgb => 2,
         Target::LampArray(_) => 3,
         Target::Kernel(_) => 0,
     }
@@ -323,7 +327,11 @@ mod tests {
             transport_group(&Target::Ram(0x73))
         );
         let hub = transport_group(&Target::LampArray("hub".into()));
-        for target in [Target::Astral, Target::Board, Target::Ram(0x72)] {
+        for target in [
+            Target::EneGpu("gpu".into()),
+            Target::Board,
+            Target::Ram(0x72),
+        ] {
             assert_ne!(transport_group(&target), hub);
         }
     }

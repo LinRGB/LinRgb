@@ -1,0 +1,5 @@
+linrgb (1.0.0~beta.1-1) unstable; urgency=medium
+
+  * Add local Debian packaging for the first LinRgb beta.
+
+ -- LinRgb maintainers <Yuna404@users.noreply.github.com>  Wed, 18 Nov 2026 00:00:00 +0000

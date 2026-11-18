@@ -5,13 +5,12 @@ fn color_bytes([red, green, blue]: [u8; 3], leds: usize) -> Vec<u8> {
     [red, blue, green].repeat(leds)
 }
 
-pub fn open(root: &Path) -> Result<Ene, Box<dyn Error>> {
-    let cards = crate::hardware::detect(root)?;
-    let [card] = cards.as_slice() else {
-        return Err("Exactly one RTX 5080 Astral must be present.".into());
-    };
+pub fn open(card: &Path) -> Result<Ene, Box<dyn Error>> {
+    if crate::hardware::nvidia_ene_name(card).is_none() {
+        return Err("GPU is not listed for this ASUS ENE driver.".into());
+    }
     let mut adapter = None;
-    for entry in fs::read_dir(root.join(card))? {
+    for entry in fs::read_dir(card)? {
         let entry = entry?;
         let name = entry.file_name();
         let Some(number) = name
@@ -28,7 +27,22 @@ pub fn open(root: &Path) -> Result<Ene, Box<dyn Error>> {
         }
     }
     let adapter = adapter.ok_or("NVIDIA I²C bus not found.")?;
-    open_ene(adapter, 0x67, b"AUMA0-E6K5-1113", 0x8100, None)
+    // These ENE GPU firmware layouts share the direct-color register and LED count field.
+    open_ene(
+        adapter,
+        0x67,
+        &[
+            b"AUMA0-E6K5-1113",
+            b"AUMA0-E6K5-1114",
+            b"AUMA0-E6K5-0107",
+            b"AUMA0-E6K5-1107",
+            b"AUMA0-E6K5-1110",
+            b"AUMA0-E6K5-1111",
+            b"AUMA0-E6K5-0008",
+        ],
+        0x8100,
+        None,
+    )
 }
 
 pub struct Ene {
@@ -40,7 +54,7 @@ pub struct Ene {
 pub fn open_ene(
     adapter: u32,
     address: u16,
-    identity: &[u8],
+    identities: &[&[u8]],
     base: u16,
     fixed_leds: Option<u8>,
 ) -> Result<Ene, Box<dyn Error>> {
@@ -49,8 +63,18 @@ pub fn open_ene(
         bus.smbus_write_word_data(0x00, register.swap_bytes())?;
         bus.smbus_read_byte_data(0x81)
     };
-    for (offset, expected) in identity.iter().enumerate() {
-        if read(0x1000 + offset as u16)? != *expected {
+    let mut identity = [0; 15];
+    let length = identities
+        .first()
+        .map(|known| known.len())
+        .filter(|length| (1..=identity.len()).contains(length))
+        .ok_or("Invalid ENE firmware list")?;
+    for offset in 0..length {
+        identity[offset] = read(0x1000 + offset as u16)?;
+        if !identities
+            .iter()
+            .any(|known| known.get(..=offset) == Some(&identity[..=offset]))
+        {
             return Err("Unknown ENE controller. No color applied.".into());
         }
     }

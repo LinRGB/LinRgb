@@ -1,0 +1,14 @@
+Source: linrgb
+Section: utils
+Priority: optional
+Maintainer: LinRgb maintainers <Yuna404@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13), libgtk-4-dev, pkgconf, rustup
+Homepage: https://github.com/Yuna404/LinRgb
+Rules-Requires-Root: no
+
+Package: linrgb
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Native RGB lighting control for Linux
+ LinRgb controls supported USB HID and I2C lighting controllers
+ through a GTK4 desktop interface.

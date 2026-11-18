@@ -4,6 +4,7 @@ mod astral;
 mod avatar;
 mod board;
 mod color_wheel;
+mod corsair;
 mod effects;
 mod hardware;
 mod i18n;
@@ -28,8 +29,7 @@ use std::{
 };
 
 const PCI: &str = "/sys/bus/pci/devices";
-const TARGETS: [(&str, &str); 4] = [
-    (hardware::ASTRAL, "Graphics card"),
+const TARGETS: [(&str, &str); 3] = [
     (
         "Crosshair VIII Hero (Wi-Fi)",
         "Motherboard · fixed Aura zone",
@@ -308,7 +308,6 @@ fn main() -> glib::ExitCode {
             use effects::Target;
             let mut targets = Vec::new();
             for (index, target) in [
-                Target::Astral,
                 Target::Board,
                 Target::Ram(0x72),
                 Target::Ram(0x73),
@@ -317,7 +316,7 @@ fn main() -> glib::ExitCode {
             .enumerate()
             {
                 if selection[index].is_sensitive() && selection[index].is_active() {
-                    targets.push((TARGETS[index].0.to_owned(), target));
+                    targets.push((selection[index].label().map_or_else(|| TARGETS[index].0.to_owned(), |label| label.to_string()), target));
                 }
             }
             for (target, check) in kernel_selection.borrow().iter() {
@@ -384,11 +383,17 @@ fn main() -> glib::ExitCode {
         apply.connect_clicked(move |_| apply_settings(false));
         reset.connect_clicked(move |_| submit(true));
         let update = move || {
-            let supported = hardware::detect(Path::new(PCI)).unwrap_or_default();
-            checks[0].set_sensitive(supported.len() == 1);
-            let board_supported = board::check_board().is_ok();
+            let gpus = hardware::detect_ene_gpus(Path::new(PCI)).unwrap_or_default();
+            let supported = gpus.iter().filter_map(|(path, _)| path.file_name()).map(|name| name.to_string_lossy().into_owned()).collect::<Vec<_>>();
+            let crosshair = board::check_board().is_ok();
+            let b550 = board::b550_present();
+            let board_supported = crosshair || b550;
+            checks[0].set_sensitive(board_supported);
+            if b550 {
+                checks[0].set_label(Some("ASUS ROG STRIX B550-A GAMING · Aura RGB"));
+            }
             for check in &checks[1..] {
-                check.set_sensitive(board_supported);
+                check.set_sensitive(crosshair);
             }
             let mut text = match hardware::other_graphics(Path::new(PCI), &supported) {
                 Ok(cards) if cards.is_empty() => String::new(),
@@ -402,7 +407,17 @@ fn main() -> glib::ExitCode {
                     text.push_str(&format!("{}: {name}", tr("Motherboard without an RGB driver", "Carte mère sans pilote RGB")));
                 }
             }
-            let mut dynamic = Vec::new();
+            let mut dynamic: Vec<_> = gpus.into_iter().map(|(path, name)| {
+                (format!("{name} · ENE"), effects::Target::EneGpu(path))
+            }).collect();
+            if b550 {
+                dynamic.push(("ASUS B550-A · Addressable RGB Header 1".to_owned(), effects::Target::BoardArgb));
+            }
+            if b550 && board::ram_bus().is_ok() {
+                dynamic.extend([0x5a, 0x5b].map(|address| {
+                    (format!("Corsair Vengeance RGB Pro SL · {address:#04x} · Experimental"), effects::Target::Corsair(address))
+                }));
+            }
             match kernel_led::detect(Path::new("/sys/class/leds")) {
                 Ok(paths) => {
                     dynamic.extend(paths.into_iter().map(|path| {
