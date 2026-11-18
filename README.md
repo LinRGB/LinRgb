@@ -11,7 +11,7 @@ LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64
 With Nix Flakes enabled, run:
 
 ```bash
-nix run github:Yuna404/LinRgb/v1.0.0-beta.1
+nix run github:Yuna404/LinRgb/main
 ```
 
 This downloads or builds the pinned beta and opens LinRgb. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
@@ -22,7 +22,7 @@ Add LinRgb to your flake inputs:
 
 ```nix
 inputs.linrgb = {
-  url = "github:Yuna404/LinRgb/v1.0.0-beta.1";
+  url = "github:Yuna404/LinRgb/main";
 };
 ```
 
