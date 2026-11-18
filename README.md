@@ -14,35 +14,37 @@ nix run github:Yuna404/LinRgb/v1.0.0-beta.1
 
 This downloads or builds the pinned beta and opens LinRgb. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
 
-## Install on NixOS with Flakes
+## Install with Flakes
 
-1. Add the release as an input in your existing `flake.nix`:
+Add LinRgb to your flake inputs:
 
-   ```nix
-   inputs.linrgb.url = "github:Yuna404/LinRgb/v1.0.0-beta.1";
-   ```
+```nix
+inputs.linrgb = {
+  url = "github:Yuna404/LinRgb/v1.0.0-beta.1";
+};
+```
 
-2. Include `linrgb` in your existing `outputs` arguments, for example `outputs = { nixpkgs, linrgb, ... }: ...`. In the `modules` list of your `nixpkgs.lib.nixosSystem` call, add this inline module. Keep your existing modules:
+Keep LinRgb's pinned `nixpkgs` input instead of setting `inputs.linrgb.inputs.nixpkgs.follows = "nixpkgs"`. The beta was tested with its own pinned dependencies.
 
-   ```nix
-   ({ pkgs, ... }: let
-     package = linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default;
-   in {
-     environment.systemPackages = [ package ];
-     services.udev.packages = [ package ];
-   })
-   ```
+Add this package to `home.packages` or `environment.systemPackages` in a module that has access to your flake `inputs`:
 
-3. From the directory containing your system flake, lock the input and rebuild. Replace `YOUR_HOST` with the name under `nixosConfigurations`:
+```nix
+inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
+```
 
-   ```bash
-   nix flake lock
-   sudo nixos-rebuild switch --flake .#YOUR_HOST
-   ```
+Rebuild your system or Home Manager configuration, then launch **LinRgb** from the application menu or run `linrgb`.
 
-4. Open **LinRgb** from the application menu or run `linrgb`. Reconnect the RGB USB controller after the rebuild so udev can apply the new permissions. Commit your updated `flake.lock` to keep the installation reproducible. To use a newer release, change the tag in the input URL before rebuilding.
+### Optional USB permissions on NixOS
 
-The udev rules grant the active local session access to the supported ASUS Aura and Fractal USB IDs. GPU and RAM controllers using I²C still require access to their specific `/dev/i2c-*` nodes. The package does not grant blanket I²C access. If **Apply** reports `Permission denied`, verify the adapter and its permissions instead of launching LinRgb with `sudo`.
+If you need access to the supported ASUS Aura or Fractal USB controllers, add the package to `services.udev.packages` in your **NixOS** configuration. Home Manager alone cannot install system udev rules.
+
+```nix
+services.udev.packages = [
+  inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
+];
+```
+
+Rebuild NixOS and reconnect the USB controller. These rules grant access to the active local session for the supported USB IDs only. GPU and RAM controllers using I²C still require separate access to their `/dev/i2c-*` nodes. If **Apply** reports `Permission denied`, check the device permissions rather than running LinRgb as root.
 
 ## Features
 
