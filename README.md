@@ -2,6 +2,8 @@
 
 **AI disclosure:** LinRgb was built with AI assistance under the maintainer’s direction. AI generated much of the code and documentation, and the maintainer tested selected hardware and workflows. A passing software test does not mean an unlisted device is safe or supported.
 
+**Why I built LinRgb:** I couldn't find a Linux RGB app that worked the way I wanted. I didn't have the programming experience to build it on my own, so I used AI to help make the tool I wanted for my own PC. If you'd rather not use software built this way, I understand. There's no pressure to use LinRgb.
+
 LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64-linux` is the primary platform for this beta. OpenRGB and SignalRGB are not required at runtime.
 
 ## Try the beta without installing it
