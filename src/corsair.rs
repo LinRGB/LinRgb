@@ -27,29 +27,24 @@ pub fn open(address: u16) -> Result<impl FnMut([u8; 3]) -> Result<()>> {
     }
     let bus = crate::board::ram_bus()?;
     let mut dev = LinuxI2CDevice::new(format!("/dev/i2c-{bus}"), address)?;
-    for _ in 0..20 {
-        if dev.smbus_read_byte_data(0x30)? & 8 == 0 {
-            dev.smbus_write_byte_data(0x61, 0)?;
-            dev.smbus_write_byte_data(0x21, 0)?;
-            let mut info = [0; 32];
-            for byte in &mut info {
-                *byte = dev.smbus_read_byte_data(0x40)?;
-            }
-            if info[..2] != [0x1c, 0x1b]
-                || !matches!(info[2..4], [0 | 1, 3])
-                || info[28] < 4
-                || crc(&info) != dev.smbus_read_byte_data(0x42)?
-            {
-                return Err("Unrecognized Corsair RGB controller.".into());
-            }
-            return Ok(move |rgb| {
-                dev.smbus_write_block_data(0x31, &frame(rgb))?;
-                Ok(())
-            });
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
+    // The configuration-write busy flag does not gate device info or direct RGB.
+    dev.smbus_write_byte_data(0x61, 0)?;
+    dev.smbus_write_byte_data(0x21, 0)?;
+    let mut info = [0; 32];
+    for byte in &mut info {
+        *byte = dev.smbus_read_byte_data(0x40)?;
     }
-    Err("Corsair RGB controller is busy.".into())
+    if info[..2] != [0x1c, 0x1b]
+        || !matches!(info[2..4], [0 | 1, 3])
+        || info[28] < 4
+        || crc(&info) != dev.smbus_read_byte_data(0x42)?
+    {
+        return Err("Unrecognized Corsair RGB controller.".into());
+    }
+    Ok(move |rgb| {
+        dev.smbus_write_block_data(0x31, &frame(rgb))?;
+        Ok(())
+    })
 }
 
 #[cfg(test)]
