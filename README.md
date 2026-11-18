@@ -26,6 +26,8 @@ inputs.linrgb = {
 };
 ```
 
+The release tag is fixed. To get newer fixes, use `github:Yuna404/LinRgb/main` as the input URL, run `nix flake update linrgb`, then rebuild. Restart LinRgb after rebuilding so the old process does not stay in the tray.
+
 Keep LinRgb's pinned `nixpkgs` input instead of setting `inputs.linrgb.inputs.nixpkgs.follows = "nixpkgs"`. The beta was tested with its own pinned dependencies.
 
 Add this package to `home.packages` or `environment.systemPackages` in a module that has access to your flake `inputs`:
@@ -36,17 +38,18 @@ inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
 
 Rebuild your system or Home Manager configuration, then launch **LinRgb** from the application menu or run `linrgb`.
 
-### Optional USB permissions on NixOS
+### NixOS module with device permissions
 
-If you need access to the supported ASUS Aura or Fractal USB controllers, add the package to `services.udev.packages` in your **NixOS** configuration. Home Manager alone cannot install system udev rules.
+On revisions that export `nixosModules.default`, import the module instead of adding the package manually. In your NixOS configuration, with `inputs` in scope:
 
 ```nix
-services.udev.packages = [
-  inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
+imports = [ inputs.linrgb.nixosModules.default ];
+programs.linrgb.enable = true;
 ```
 
-Rebuild NixOS and reconnect the USB controller. These rules grant access to the active local session for the supported USB IDs only. GPU and RAM controllers using I²C still require separate access to their `/dev/i2c-*` nodes. If **Apply** reports `Permission denied`, check the device permissions rather than running LinRgb as root.
+The module installs LinRgb, loads `i2c-dev`, and registers the bundled udev rules. The rules grant the active local session access to the supported USB controllers and specific Astral GPU and Crosshair SMBus adapters. An I²C permission applies to the entire matched adapter, not just its RGB controller. No blanket I²C access is granted.
+
+The `v1.0.0-beta.1` tag predates this module and bundles USB rules only. For that tag, add the package to `services.udev.packages` to enable USB access. Home Manager and `nix run` cannot install system udev rules. After a NixOS rebuild, reconnect USB devices or reboot if device access has not refreshed. Do not run LinRgb as root.
 
 ## Features
 

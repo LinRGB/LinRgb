@@ -1,3 +1,7 @@
 # Grant the active local session access only to supported USB lighting controllers.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="18f3", TAG+="uaccess"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="36bc", ATTRS{idProduct}=="1001", TAG+="uaccess"
+
+# Limit I²C access to the adapter and PCI subsystem IDs used by the drivers.
+SUBSYSTEM=="i2c-dev", ATTR{name}=="NVIDIA i2c adapter 1 at *", ATTRS{vendor}=="0x10de", ATTRS{device}=="0x2c02", ATTRS{subsystem_vendor}=="0x1043", ATTRS{subsystem_device}=="0x89de|0x89df|0x8a2b|0x8a2c", TAG+="uaccess"
+SUBSYSTEM=="i2c-dev", ATTR{name}=="SMBus PIIX4 adapter port 0 at 0b00", KERNELS=="0000:00:14.0", ATTRS{vendor}=="0x1022", ATTRS{device}=="0x790b", ATTRS{subsystem_vendor}=="0x1043", ATTRS{subsystem_device}=="0x87c0", TAG+="uaccess"

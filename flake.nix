@@ -8,6 +8,18 @@
     in {
       packages.${system}.default = pkgs.callPackage ./nix/package.nix {};
       checks.${system}.package = self.packages.${system}.default;
+      nixosModules.default = { config, lib, pkgs, ... }:
+        let
+          system = pkgs.stdenv.hostPlatform.system;
+          package = self.packages.${system}.default;
+        in {
+          options.programs.linrgb.enable = lib.mkEnableOption "LinRgb and its device access rules";
+          config = lib.mkIf config.programs.linrgb.enable {
+            environment.systemPackages = [ package ];
+            services.udev.packages = [ package ];
+            boot.kernelModules = [ "i2c-dev" ];
+          };
+        };
       devShells.${system}.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [ cargo rustc rustfmt clippy pkg-config ];
         buildInputs = [ pkgs.gtk4 ];
