@@ -139,7 +139,8 @@ fn kernel_capabilities_are_rechecked_and_verify_does_not_change_color() {
     let t = Target::Kernel(dir.clone(), dir.metadata().unwrap().ino(), layout);
     let ticket = Generation::default().ticket();
     let stop = AtomicBool::new(false);
-    let mut session = t.clone().connect(&stop, &ticket).unwrap();
+    let mut connections = Default::default();
+    let mut session = t.clone().connect(&stop, &ticket, &mut connections).unwrap();
     assert_eq!(fs::read_to_string(dir.join("brightness")).unwrap(), "0");
     assert!(matches!(session.capabilities(),Capabilities::Sysfs{layout:l} if l==layout));
     assert!(session.set_rgb([255, 0, 0]).unwrap());
@@ -149,7 +150,7 @@ fn kernel_capabilities_are_rechecked_and_verify_does_not_change_color() {
     );
     drop(session);
     fs::write(dir.join("multi_index"), "red green blue").unwrap();
-    assert!(t.connect(&stop, &ticket).is_err());
+    assert!(t.connect(&stop, &ticket, &mut connections).is_err());
     assert_eq!(
         fs::read_to_string(dir.join("multi_intensity")).unwrap(),
         "0 31 0\n"

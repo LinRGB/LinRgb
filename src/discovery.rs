@@ -4,7 +4,11 @@
 mod tests;
 use crate::{
     astral, board,
-    drivers::{Target, kernel_led, lamp_array},
+    drivers::{
+        Target,
+        aura::{self, Zone},
+        kernel_led, lamp_array,
+    },
     hardware,
     i18n::tr,
 };
@@ -54,8 +58,8 @@ impl Device {
 
     pub fn support_label(&self) -> &'static str {
         match &self.target {
-            Target::BoardArgb(_) => tr("experimental layout", "zones expérimentales"),
-            Target::Board(_) => tr("matched board layout", "modèle de carte reconnu"),
+            Target::Aura(_, Zone::Header1) => tr("experimental layout", "zones expérimentales"),
+            Target::Aura(_, Zone::Fixed) => tr("matched board layout", "modèle de carte reconnu"),
             Target::LampArray(_) => tr("matched HID layout", "descripteur HID reconnu"),
             Target::Kernel(..) => tr("kernel RGB interface", "interface RGB du noyau"),
             Target::EneGpu(_) | Target::Ram(_) | Target::Corsair(_) => "", // labels already state the pending check
@@ -79,9 +83,6 @@ impl Inventory {
     fn add(&mut self, target: Target, name: String, access: Access) {
         let key = match &target {
             Target::LampArray(path) => Target::LampArray(hid_key(path)),
-            Target::Board(path) => Target::Board(hid_key(path)),
-            Target::BoardArgb(path) => Target::BoardArgb(hid_key(path)),
-            Target::Kernel(..) => target.clone(),
             _ => target.clone(),
         };
         if !self.devices.iter().any(|d| d.key == key) {
@@ -99,16 +100,9 @@ impl Inventory {
 impl Inventory {
     pub fn diagnostics(&self) -> serde_json::Value {
         let devices: Vec<_> = self.devices.iter().map(|d| {
-            let (backend, matched, address) = match &d.target {
-                Target::Ram(a) => ("ene-dram", "slot-candidate", Some(a)),
-                Target::Corsair(a) => ("corsair-dram", "slot-candidate", Some(a)),
-                Target::Board(_) => ("aura-fixed", "dmi-and-usb", None),
-                Target::BoardArgb(_) => ("aura-argb", "experimental-board-layout", None),
-                Target::EneGpu(_) => ("ene-gpu", "pci-candidate", None),
-                Target::Kernel(..) => ("linux-multicolor", "kernel-interface", None),
-                Target::LampArray(_) => ("hid-lamparray", "known-report-layout", None),
-            };
-            serde_json::json!({"backend":backend, "match":matched, "required_interface": d.target.interface().description(), "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
+            let driver=d.target.driver();
+            let address=match d.target {Target::Ram(a)|Target::Corsair(a)=>Some(a),_=>None};
+            serde_json::json!({"backend":driver.id, "match":driver.evidence, "required_interface": driver.interface.description(), "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
         }).collect();
         let graphics: Vec<_> = self
             .pci_ids
@@ -182,33 +176,31 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
     }
     if let Ok(model) = fs::read_to_string(sys.join("class/dmi/id/board_name")) {
         let model = model.trim();
-        if let Some((hid, _)) = board::fixed_zone(model) {
+        if let Some(profile) = aura::Profile::identify(model) {
             let raw = sys.join("class/hidraw");
-            match board::hid_node(&raw, hid) {
-                Ok(node) => {
+            match aura::observe(&raw, profile) {
+                Ok((node, attachment)) => {
                     let state = access(&dev.join(&node), libc::W_OK);
-                    if let Ok(instance) = raw.join(node).join("device").canonicalize() {
-                        if state == Access::Available {
-                            owners.insert(instance.clone());
-                        }
+                    if state == Access::Available {
+                        owners.insert(attachment.instance.clone());
+                    }
+                    out.add(
+                        Target::Aura(attachment.clone(), Zone::Fixed),
+                        format!("{model} · Aura RGB"),
+                        state,
+                    );
+                    if profile == aura::Profile::Strix {
                         out.add(
-                            Target::Board(instance.clone()),
-                            format!("{model} · Aura RGB"),
+                            Target::Aura(attachment, Zone::Header1),
+                            format!("{model} · Addressable RGB Header 1"),
                             state,
                         );
-                        if model == board::B550 {
-                            out.add(
-                                Target::BoardArgb(instance),
-                                format!("{model} · Addressable RGB Header 1"),
-                                state,
-                            );
-                        }
                     }
                 }
                 Err(e) => out.notes.push(format!("{model} · Aura USB: {e}")),
             }
             if let Ok(bus) = board::ram_bus_at(&pci.join("0000:00:14.0")) {
-                let candidates = if model == board::B550 {
+                let candidates = if profile == aura::Profile::Strix {
                     [Target::Corsair(0x5a), Target::Corsair(0x5b)]
                 } else {
                     [Target::Ram(0x72), Target::Ram(0x73)]

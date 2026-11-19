@@ -1,4 +1,7 @@
 //! Static backend dispatch. Inventory holds candidates, never a writable handle.
+pub(crate) mod aura;
+mod registry;
+pub use registry::Lane;
 pub(crate) mod kernel_led;
 pub(crate) mod lamp_array;
 #[cfg(test)]
@@ -19,8 +22,7 @@ use std::{
 #[derive(Clone, PartialEq, Eq)]
 pub enum Target {
     EneGpu(PathBuf),
-    Board(PathBuf),
-    BoardArgb(PathBuf),
+    Aura(aura::Attachment, aura::Zone),
     Ram(u16),
     Corsair(u16),
     Kernel(PathBuf, u64, kernel_led::Layout),
@@ -73,6 +75,7 @@ pub enum Capabilities {
         lamps: NonZeroU16,
         min_interval: Duration,
     }, // read/write hidraw features
+    Aura(aura::Layout),
     LegacyDirect, // protocol-specific details not exposed as verified capabilities
 }
 impl Capabilities {
@@ -91,6 +94,7 @@ impl Capabilities {
                 lamps,
                 min_interval,
             } => Some(format!("{lamps} LED · min {} µs", min_interval.as_micros())),
+            Self::Aura(layout) => Some(layout.description().into()),
             Self::LegacyDirect => None,
         }
     }
@@ -177,16 +181,12 @@ impl Interface {
 }
 
 impl Target {
-    pub fn interface(&self) -> Interface {
-        match self {
-            Self::Kernel(..) => Interface::SysfsAttributes,
-            Self::LampArray(_) => Interface::HidrawFeatures,
-            Self::Board(_) | Self::BoardArgb(_) => Interface::HidrawWrite,
-            Self::EneGpu(_) | Self::Ram(_) | Self::Corsair(_) => Interface::Smbus,
-        }
-    }
-
-    pub fn connect<'a>(self, stop: &'a AtomicBool, ticket: &'a Ticket) -> Result<Session<'a>> {
+    pub fn connect<'a>(
+        self,
+        stop: &'a AtomicBool,
+        ticket: &'a Ticket,
+        connections: &mut aura::Connections,
+    ) -> Result<Session<'a>> {
         Session::connect(stop, ticket, || {
             let sink: Sink<'a> = match self {
                 Self::Kernel(path, inode, layout) => {
@@ -209,8 +209,7 @@ impl Target {
                     Box::new(move |rgb| device.set(rgb))
                 }
                 Self::Corsair(address) => Box::new(crate::corsair::open(address)?),
-                Self::Board(path) => Box::new(crate::board::open(&path)?),
-                Self::BoardArgb(path) => Box::new(crate::board::open_argb(&path)?),
+                Self::Aura(attachment, zone) => return connections.bind(attachment, zone, stop),
             };
             Ok((Capabilities::LegacyDirect, sink))
         })

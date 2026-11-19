@@ -1,4 +1,4 @@
-use crate::drivers::{Target, Ticket};
+use crate::drivers::{Interface, Lane, Target, Ticket};
 use std::{
     sync::atomic::{AtomicBool, Ordering},
     thread,
@@ -89,16 +89,6 @@ const WDL_FRAME_INTERVAL: Duration = Duration::from_micros(12_500);
 
 type Targets = Vec<(String, Target)>;
 
-fn transport_group(target: &Target) -> usize {
-    match target {
-        Target::EneGpu(_) => 0,
-        Target::Ram(_) | Target::Corsair(_) => 1,
-        Target::Board(_) | Target::BoardArgb(_) => 2,
-        Target::LampArray(_) => 3,
-        Target::Kernel(..) => 0,
-    }
-}
-
 fn next_frame(previous: Instant, now: Instant, interval: Duration) -> Instant {
     let scheduled = previous + interval;
     if scheduled >= now {
@@ -120,23 +110,23 @@ pub fn run(
     if !effect.animated()
         || targets
             .iter()
-            .any(|(_, target)| matches!(target, Target::Kernel(..)))
+            .any(|(_, target)| matches!(target.driver().interface, Interface::SysfsAttributes))
     {
         return run_group(targets, effect, stop, ticket, start, FRAME_INTERVAL, report);
     }
-    let mut groups: [Targets; 4] = Default::default();
+    let mut groups: [Targets; Lane::ALL.len()] = Default::default();
     for item in targets {
-        groups[transport_group(&item.1)].push(item);
+        groups[item.1.driver().lane as usize].push(item);
     }
-    let mut groups = groups
+    let mut groups = Lane::ALL
         .into_iter()
-        .enumerate()
+        .zip(groups)
         .filter(|(_, group)| !group.is_empty());
     let Some((first, primary)) = groups.next() else {
         return;
     };
     let interval = |group| {
-        if group == 3 {
+        if group == Lane::Wdl {
             WDL_FRAME_INTERVAL
         } else {
             FRAME_INTERVAL
@@ -188,15 +178,18 @@ fn run_group(
     report: &impl Fn(String, String),
 ) {
     let mut active = Vec::new();
+    let mut connections = Default::default();
     for (name, target) in targets {
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        match target.connect(stop, ticket).and_then(|mut writer| {
-            let color = effect.sample(start.elapsed().as_secs_f64());
-            writer.set_rgb(color)?;
-            Ok((writer, color))
-        }) {
+        match target
+            .connect(stop, ticket, &mut connections)
+            .and_then(|mut writer| {
+                let color = effect.sample(start.elapsed().as_secs_f64());
+                writer.set_rgb(color)?;
+                Ok((writer, color))
+            }) {
             Ok((writer, color)) => {
                 let state = if effect.animated() {
                     crate::i18n::tr("effect running", "effet en cours")
@@ -216,6 +209,7 @@ fn run_group(
             ),
         }
     }
+    drop(connections); // active sessions now own their transports
     if effect.animated() {
         let mut deadline = start;
         while !active.is_empty() && !stop.load(Ordering::Relaxed) {
@@ -314,17 +308,14 @@ mod tests {
 
     #[test]
     fn ram_shares_a_worker_and_the_wdl_hub_does_not_block_other_transports() {
-        use super::{Target, transport_group};
+        use super::Target;
+        let transport_group = |target: &Target| target.driver().lane;
         assert_eq!(
             transport_group(&Target::Ram(0x72)),
             transport_group(&Target::Ram(0x73))
         );
         let hub = transport_group(&Target::LampArray("hub".into()));
-        for target in [
-            Target::EneGpu("gpu".into()),
-            Target::Board("board".into()),
-            Target::Ram(0x72),
-        ] {
+        for target in [Target::EneGpu("gpu".into()), Target::Ram(0x72)] {
             assert_ne!(transport_group(&target), hub);
         }
     }

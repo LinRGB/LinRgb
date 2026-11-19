@@ -34,7 +34,7 @@ impl Drop for Fixture {
 #[test]
 fn board_name_alone_cannot_create_rgb_controls() {
     let f = Fixture::new();
-    f.put("sys/class/dmi/id/board_name", board::B550);
+    f.put("sys/class/dmi/id/board_name", aura::B550);
     f.put(
         "sys/class/hidraw/hidraw7/device/uevent",
         "HID_ID=0003:00000B05:000018F3",
@@ -44,6 +44,14 @@ fn board_name_alone_cannot_create_rgb_controls() {
         "sys/class/hidraw/hidraw7/device/uevent",
         "HID_ID=0003:00000B05:00001939",
     );
+    let desc = include_bytes!("drivers/aura-interface.hid");
+    f.put("sys/class/hidraw/hidraw7/bInterfaceNumber", "01");
+    f.put("sys/class/hidraw/hidraw7/device/report_descriptor", desc);
+    assert!(f.scan().devices.is_empty());
+    f.put("sys/class/hidraw/hidraw7/bInterfaceNumber", "02");
+    f.put("sys/class/hidraw/hidraw7/device/report_descriptor", [0; 36]);
+    assert!(f.scan().devices.is_empty());
+    f.put("sys/class/hidraw/hidraw7/device/report_descriptor", desc);
     let snapshot = f.scan();
     assert_eq!(snapshot.devices.len(), 2);
     assert!(snapshot.devices.iter().all(|d| d.access == Access::Missing));
@@ -54,13 +62,15 @@ fn board_name_alone_cannot_create_rgb_controls() {
         "sys/class/hidraw/hidraw8/device/uevent",
         "HID_ID=0003:00000B05:00001939",
     );
+    f.put("sys/class/hidraw/hidraw8/bInterfaceNumber", "02");
+    f.put("sys/class/hidraw/hidraw8/device/report_descriptor", desc);
     assert!(f.scan().devices.is_empty()); // ambiguous
 }
 
 #[test]
 fn smbus_requires_exact_parent_and_one_adapter_and_slots_need_opt_in() {
     let f = Fixture::new();
-    f.put("sys/class/dmi/id/board_name", board::B550);
+    f.put("sys/class/dmi/id/board_name", aura::B550);
     let pci = "sys/bus/pci/devices/0000:00:14.0";
     for (attr, id) in [
         ("vendor", "0x1022"),

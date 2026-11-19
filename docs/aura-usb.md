@@ -1,0 +1,29 @@
+# ASUS Aura USB: connection and compatibility
+
+| Board profile (exact DMI) | USB + interface | Uniform RGB operations | Validation status |
+|---|---|---|---|
+| ROG CROSSHAIR VIII HERO (WI-FI) | `0b05:18f3`, HID interface 2 | Fixed zone, 8 profile positions. No ARGB headers. | Previously exercised with solid color. Interface number and descriptor observed passively on this board for this migration. Fixed packet covered by a fixture. No new physical writes. |
+| ROG STRIX B550-A GAMING | `0b05:1939`, HID interface 2 | Two fixed positions; separately selectable Addressable RGB Header 1 with 100 profile positions. | Experimental. Existing addressing preserved; the header-to-GPU sync connection was previously reported, not a direct XFX backend. Both zones tested together with a mock. No B550-A descriptor capture or physical validation for this migration. |
+
+The checked-in 36-byte `src/drivers/aura-interface.hid` is a **kernel-cached descriptor read from the Crosshair**, not a simulated B550-A capture. It declares a vendor application (usage page `ff72`) with report ID `ec` and 64-byte input/output payloads. Interface 2 also agrees with the existing SignalRGB ASUS motherboard endpoint filter. Neither that filter nor the OpenRGB motherboard VID/PID registrations establish firmware or zone compatibility. No implementation from either project is loaded. Both profiles require the known descriptor; a B550-A firmware with a different descriptor is intentionally withheld pending passive evidence. There is no fall-back to VID/PID. No new commands, firmware probe, advertised LED count, measured refresh rate, readback or persistent mode.
+
+## Authority and contention
+
+- Inventory matches DMI, HID bus/product and interface metadata, without opening hidraw. No matching interface, or more than one matching interface: no Aura controls. Apply binds the selected canonical HID instance (including connection counter and instance directory inode), not `/dev/hidrawN`, a USB port, or a serial string.
+- Connection checks the open character device's numbers, sysfs parent, `HIDIOCGRAWINFO`, DMI, instance inode, USB interface and exact report descriptor (`HIDIOCGRDESC` on the fd). Opening and binding do not change the lighting. The common session checks the inventory ticket before and after setup and before the first color.
+- A job owns **one fd** for both Aura zones. An exclusive nonblocking advisory file lock rejects other cooperating opens. The two zone writers run on the same worker; no per-frame path lookup, global mutex or extra polling. Uncooperative clients can still write; close other RGB applications. Repeated Apply cancels and joins the previous worker off GTK before connecting again.
+- Fixed color sends one report. Header 1 sends its existing Gen1 command on first use, then five direct reports of 20 RGB positions with commit on the last. The same operations power software effects. A short write or transport failure drops the shared fd for both zones. No partial-report retry or compensating write. Cancellation is checked between packets; a write already entering the kernel may complete. Revocation does not restore the previous color or undo a partial update.
+- Refresh invalidates queued operations, not a still-valid bound effect. Removal, loss of access or logind sleep stops the job when observed; resume never replays the effect. ACL changes do not themselves close an open Linux fd. If a node is reused before refresh, the old worker can only use its original fd. A fresh selection and Apply are required for a replacement. This identifies a **kernel attachment**, not a unique physical board across boots, not cryptographic device identity, and not the LED strip connected to a header.
+
+## Tests and physical follow-up
+
+`drivers::aura::tests` checks profile/zone admission, complete fixed and ARGB packet sequences, short writes, `ENODEV`, cancellation between packets, lock contention and a same-path replacement while an effect owns the old fd. Files and fake transports stand in for hardware. The existing session and inventory fixtures exercise stale tickets, sleep and state reconciliation. No test here measures the LED count or the actual colors.
+
+1. Run `linrgb --diagnostics` as the session user, without Apply. On the B550-A, compare the HID interface number and kernel-cached sysfs `report_descriptor` with the fixture. Do not loosen the check for a mismatch; supply the sanitized descriptor and board/USB IDs for review.
+2. Only with the owner's approval: stop other lighting tools, record the original color, apply one distinct fixed color to each supported zone, then to both B550-A zones. Check each output, repeated Apply, animation and suspend/resume without replay. Restore the original color explicitly. Do not unplug internal headers, DIMMs or PCI devices while powered.
+
+## Adding the next driver
+
+`drivers/registry.rs` is closed Rust dispatch over `Target`, not a second session layer. A backend declares its diagnostic ID, passive evidence, required interface and scheduling lane there. Its observation builds a target; `Target::connect` delegates validation to the backend; the returned `Capabilities` and RGB sink are usable only through `Session`. Keep runtime facts out of the passive registry. No dynamic plugins or new dependencies.
+
+Next migration: Corsair Vengeance RGB Pro SL on the existing B550-A adapter and two opt-in addresses. Bind one exact adapter fd; validate the existing signature, protocol and module data; distinguish measured facts from the ten-position profile. Start with recorded transaction fixtures, terminal error injection, no overlapping commands on a shared adapter, no bus scan. Then apply the same tests to ENE DIMM/GPU. An I²C address identifies neither a permanent chip nor a hot-swappable module. Broaden matching only with sanitized interface/configuration fixtures and a physical confirmation for each new profile.
