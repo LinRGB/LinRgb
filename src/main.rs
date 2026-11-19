@@ -52,6 +52,7 @@ fn main() -> glib::ExitCode {
         let window = gtk::ApplicationWindow::builder()
             .application(app)
             .title("LinRGB")
+            .icon_name("io.github.linrgb.LinRgb")
             .default_width(1080)
             .default_height(660)
             .build();
