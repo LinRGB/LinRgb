@@ -20,15 +20,64 @@ These are standalone packages, not an AUR submission, Debian repository or Fedor
 
 ### NixOS
 
-For an inventory-only check on the tagged release: `nix run github:LinRGB/LinRgb/v1.0.0-beta.2 -- --diagnostics`. A one-off run or Home Manager package does not install system device rules.
+**Just want to see what LinRGB detects?** Run this as your normal user. It does not install device access rules or change any colors:
 
-For system integration, add `inputs.linrgb.url = "github:LinRGB/LinRgb/v1.0.0-beta.2";` to your existing flake. Keep LinRGB's own pinned nixpkgs. With `outputs = inputs@{ nixpkgs, ... }:`, include `inputs.linrgb.nixosModules.default` in your host's `modules` list alongside `./configuration.nix`. Enable it in that configuration:
+```bash
+nix run github:LinRGB/LinRgb/v1.0.0-beta.2 -- --diagnostics
+```
+
+**Want the desktop app and device access?** If you already use a NixOS flake on x86-64, follow these three steps:
+
+| ① `flake.nix` | ② `configuration.nix` | ③ Terminal |
+|---|---|---|
+| Add the LinRGB input and module | Enable LinRGB for your host | Rebuild, then check the version |
+
+#### ① Connect the module in `flake.nix`
+
+The `+` lines below are additions to your **existing** flake. Type the lines without the `+` signs. Keep your current `nixpkgs`, host name and other modules.
+
+```diff
+  inputs = {
++   linrgb.url = "github:LinRGB/LinRgb/v1.0.0-beta.2";
+  };
+
+- outputs = { self, nixpkgs, ... }: {
++ outputs = { self, nixpkgs, linrgb, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      modules = [
+        ./configuration.nix
++       linrgb.nixosModules.default
+      ];
+```
+
+If your `outputs` already uses `inputs@{ ... }`, leave that line alone and add `inputs.linrgb.nixosModules.default` to `modules` instead. Let LinRGB use its own pinned nixpkgs.
+
+#### ② Enable LinRGB in `configuration.nix`
+
+Add this line **inside the existing `{ ... }`**, alongside your other settings:
 
 ```nix
 programs.linrgb.enable = true;
 ```
 
-From the directory containing your flake run `nix flake lock`, then `sudo nixos-rebuild switch --flake .#my-host` (replace `my-host`). The module supplies the application, udev rules and kernel module. To upgrade to a later beta, change the tag and run `nix flake update linrgb` before rebuilding.
+#### ③ Rebuild and check
+
+Open a terminal in the folder containing `flake.nix`. Replace `my-host` with the name after `nixosConfigurations.` in step ①.
+
+```bash
+nix flake lock
+sudo nixos-rebuild switch --flake .#my-host
+linrgb --version
+```
+
+**Expected:** `LinRGB 1.0.0-beta.2`. Open **LinRGB** from your application menu as your normal user. The module installs the app, registers the udev rules and loads `i2c-dev`; no manual permission changes are needed.
+
+<details>
+<summary>Updating to a later beta</summary>
+
+Change the tag in step ①, run `nix flake update linrgb`, then repeat the rebuild in step ③.
+
+</details>
 
 ## Hardware: what works, and what is only a candidate?
 
