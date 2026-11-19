@@ -1,0 +1,27 @@
+name: Hardware compatibility report
+description: Report discovery, permissions or an optional lighting test.
+title: '[Hardware] '
+body:
+  - type: markdown
+    attributes:
+      value: 'No lighting test is required. Never include serial numbers, private paths or usernames.'
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and hardware
+      description: Distribution/version, kernel version, linrgb --version, controller and board model.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and observed result
+      description: Did the device appear? Was it accessible? Did you test RGB or just discovery? Include relevant redacted errors.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Optional sanitized diagnostics
+      description: Run linrgb --diagnostics as your normal user and review the output before sharing.
+      render: json

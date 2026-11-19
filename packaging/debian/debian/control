@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: LinRgb maintainers <Yuna404@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13), libgtk-4-dev, libudev-dev, pkgconf, rustup
-Homepage: https://github.com/Yuna404/LinRgb
+Homepage: https://github.com/LinRGB/LinRgb
 Rules-Requires-Root: no
 
 Package: linrgb

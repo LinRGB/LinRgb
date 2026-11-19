@@ -1,0 +1,7 @@
+# Test LinRGB without a development environment
+
+1. Download the installer for your distribution and `SHA256SUMS` from the maintainer or the release page. Install it with the [matching package-manager command](../README.md#install). Reboot once if access rules are not active.
+2. As your normal user, run `linrgb --version` and `linrgb --diagnostics > linrgb-diagnostics.json`. Diagnostics works without a desktop and does not scan SMBus, open lighting sessions, send colors or upload anything.
+3. Launch **LinRGB**. Refresh the list without applying. Note missing, denied, inventory-only or unverified entries. A RAM address is a candidate, not proof a DIMM is present. Compare the preview with what you selected; the preview should not change any physical lighting.
+4. Optional, only on your own known compatible hardware: close other RGB tools and servers, record the original state, select **one** target, apply a dim solid color, then another. Stop at the first unexpected change. Restore your chosen color explicitly. Do not unplug RAM, GPUs or internal headers while powered. Do not run the GUI as root. No lighting test is required to send a report.
+5. Report the app version, distribution, kernel (`uname -r`), model, expected result and what happened. Review the JSON and any errors before posting; omit usernames, serials, home paths and unrelated machine details. Use the [compatibility form](https://github.com/LinRGB/LinRgb/issues/new?template=hardware.yml).

@@ -1,13 +1,13 @@
-%global commit 7cb4af8352d93096925db2fc30b4747dca78c8a3
+%global upstream_version 1.0.0-beta.2
 
 Name:           linrgb
-Version:        1.0.0~beta.1
-Release:        4%{?dist}
+Version:        1.0.0~beta.2
+Release:        1%{?dist}
 Summary:        Native RGB lighting control for Linux
 # Upstream has not declared a license; this spec is for local builds.
 License:        LicenseRef-NotDeclared
-URL:            https://github.com/Yuna404/LinRgb
-Source0:        https://codeload.github.com/Yuna404/LinRgb/tar.gz/%{commit}#/linrgb-%{commit}.tar.gz
+URL:            https://github.com/LinRGB/LinRgb
+Source0:        %{url}/releases/download/v%{upstream_version}/linrgb-%{upstream_version}.tar.gz
 ExclusiveArch:  x86_64
 BuildRequires:  cargo
 BuildRequires:  gcc
@@ -18,8 +18,8 @@ BuildRequires:  pkgconfig(libudev)
 LinRgb controls supported USB HID and I2C lighting controllers through a GTK4 desktop interface.
 
 %prep
-printf 'bff34a7f10209fca458d8b065a3c1f7c781ca305e140d532c7cde39efa9c4689  %%s\n' '%{SOURCE0}' | sha256sum --check
-%autosetup -n LinRgb-%{commit}
+printf '62cb37880cc77087c17f2d774c2645981cf5bae5ecd8f054e1305f4e8906161c  %%s\n' '%{SOURCE0}' | sha256sum --check
+%autosetup -n linrgb-%{upstream_version}
 
 %build
 cargo fetch --locked --target x86_64-unknown-linux-gnu
@@ -43,7 +43,12 @@ printf 'i2c-dev\n' > %{buildroot}%{_prefix}/lib/modules-load.d/linrgb.conf
 %{_prefix}/lib/udev/rules.d/70-linrgb.rules
 %{_prefix}/lib/modules-load.d/linrgb.conf
 
+%doc notices/*
+
 %changelog
+* Thu Nov 19 2026 LinRGB maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.2-1
+- Beta 2: passive inventory and verified hardware sessions.
+
 * Thu Nov 19 2026 LinRgb maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.1-4
 - Probe ENE memory before selecting RGB registers.
 

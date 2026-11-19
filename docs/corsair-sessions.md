@@ -25,6 +25,8 @@ In the checked source, both selectors are common to device-info acquisition in t
 
 ## What is actually identified?
 
+**Beta 2 addition:** the verified ten-position writer also accepts Vengeance RGB Pro DDR4 PIDs `0100/0101`, only with protocol 4 and the same board/slot checks. A protocol 3 Pro response is rejected. RS `0400/0401` has six positions; LinRGB identifies it but withholds output pending valid wire-length evidence. No broader board support is inferred. The following describes the original Pro SL restoration.
+
 The info packet contains little-endian vendor and product IDs (offsets 0 and 2), firmware fields at 8–11 and protocol version at 28. OpenRGB maps DDR4 `0100/0101` to Vengeance Pro, `0200/0201` to Dominator Platinum, `0300/0301` to Vengeance Pro SL, and `0400/0401` to Vengeance RS (hex). LinRGB requires VID `1b1c`, one of the two **SL** PIDs, a valid packet CRC and protocol **4**. Upstream allows direct mode from version 4; this restoration does not assume an unknown future protocol. Ten is the SL profile size, not a measured LED count. Firmware version is not used as a model discriminator.
 
 This identifies the **controller profile**, not a unique serial, exact DIMM SKU or continuous physical presence. No reliable strictly read-only equivalent for this packet was found in the examined drivers. Already available SPD/SMBIOS part labels could corroborate the installed kit, but not bind a particular lighting endpoint to its reported model. No SPD reads, additional probes, manual identity assertion or compatibility switch are necessary.
