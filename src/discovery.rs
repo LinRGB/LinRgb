@@ -64,8 +64,8 @@ impl Device {
             Target::LampArray(_) => tr("matched HID layout", "descripteur HID reconnu"),
             Target::Kernel(..) => tr("kernel RGB interface", "interface RGB du noyau"),
             Target::Corsair(..) => tr(
-                "family check only; RGB unavailable",
-                "vérification de famille uniquement ; RGB indisponible",
+                "Apply queries module ID before RGB",
+                "Appliquer interroge le modèle avant le RGB",
             ),
             Target::EneGpu(_) | Target::Ram(_) => "", // labels already state the pending check
         }

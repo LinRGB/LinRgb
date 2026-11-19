@@ -93,18 +93,17 @@ fn frame(rgb: [u8; 3]) -> [u8; 32] {
 }
 
 trait Transport {
-    fn signature_byte(&mut self, reg: u8) -> Result<u8>;
-    /// Must be fresh evidence from this connection, never a cached fixture or SPD guess.
-    fn readonly_info(&mut self) -> Result<([u8; 32], u8)> {
-        Err("Corsair family matched; model verification requires non-read-only selectors. RGB withheld.".into())
-    }
+    fn read(&mut self, reg: u8) -> Result<u8>;
+    fn write_zero(&mut self, reg: u8) -> Result<()>;
     fn direct(&mut self, frame: &[u8; 32]) -> Result<()>;
 }
 impl Transport for LinuxI2CDevice {
-    fn signature_byte(&mut self, reg: u8) -> Result<u8> {
+    fn read(&mut self, reg: u8) -> Result<u8> {
         Ok(self.smbus_read_byte_data(reg)?)
     }
-    // No known read-only way to select the module-info buffer on this hardware.
+    fn write_zero(&mut self, reg: u8) -> Result<()> {
+        Ok(self.smbus_write_byte_data(reg, 0)?)
+    }
     fn direct(&mut self, frame: &[u8; 32]) -> Result<()> {
         Ok(self.smbus_write_block_data(0x31, frame)?)
     }
@@ -121,18 +120,28 @@ fn bind<'a>(
         Ok(ticket.check()?)
     };
     check()?;
-    if !matches!(dev.signature_byte(0x43)?, 0x1a..=0x1c) {
+    if !matches!(dev.read(0x43)?, 0x1a..=0x1c) {
         return Err("Unrecognized Corsair controller family".into());
     }
     check()?;
-    if !matches!(dev.signature_byte(0x44)?, 1 | 3 | 4) {
+    if !matches!(dev.read(0x44)?, 1 | 3 | 4) {
         return Err("Unrecognized Corsair controller family".into());
     }
     check()?;
-    let (info, checksum) = dev.readonly_info()?;
+    // Select device information, then start its binary transfer. Neither is a color command.
+    dev.write_zero(0x61)?;
+    check()?;
+    dev.write_zero(0x21)?;
+    let mut info = [0; 32];
+    for byte in &mut info {
+        check()?;
+        *byte = dev.read(0x40)?;
+    }
+    check()?;
+    let checksum = dev.read(0x42)?;
     if info[..2] != [0x1c, 0x1b]
         || !matches!(info[2..4], [0 | 1, 3])
-        || info[28] < 4
+        || info[28] != 4
         || crc(&info) != checksum
     {
         return Err("Unrecognized Corsair module information".into());

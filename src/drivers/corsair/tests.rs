@@ -1,215 +1,175 @@
 use super::*;
 use crate::drivers::{Generation, Session};
-use std::cell::RefCell;
+use std::collections::VecDeque;
 
-struct Mock<'a> {
-    reads: &'a RefCell<Vec<u8>>,
-    sig: [u8; 2],
-    info: Option<([u8; 32], u8)>,
-    frames: &'a RefCell<Vec<[u8; 32]>>,
-    disconnect: bool,
+// Expected wire transcript built independently of the driver. An extra transaction panics.
+#[derive(Debug)]
+enum Step {
+    Read(u8, u8),
+    Select(u8),
+    Frame([u8; 32]),
+    FailRead(u8, i32),
+    FailSelect(u8),
+    FailFrame,
 }
+struct Mock<'a>(&'a mut VecDeque<Step>);
 impl Transport for Mock<'_> {
-    fn signature_byte(&mut self, reg: u8) -> Result<u8> {
-        self.reads.borrow_mut().push(reg);
-        Ok(self.sig[match reg {
-            0x43 => 0,
-            0x44 => 1,
-            _ => panic!("unexpected register"),
-        }])
+    fn read(&mut self, reg: u8) -> Result<u8> {
+        match self.0.pop_front() {
+            Some(Step::Read(r, v)) if r == reg => Ok(v),
+            Some(Step::FailRead(r, code)) if r == reg => {
+                Err(io::Error::from_raw_os_error(code).into())
+            }
+            s => panic!("unexpected read {reg:x}: {s:?}"),
+        }
     }
-    fn readonly_info(&mut self) -> Result<([u8; 32], u8)> {
-        self.info
-            .take()
-            .ok_or_else(|| "no read-only model evidence".into())
+    fn write_zero(&mut self, reg: u8) -> Result<()> {
+        match self.0.pop_front() {
+            Some(Step::Select(r)) if r == reg => Ok(()),
+            Some(Step::FailSelect(r)) if r == reg => {
+                Err(io::Error::from_raw_os_error(libc::ENXIO).into())
+            }
+            s => panic!("unexpected selector {reg:x}: {s:?}"),
+        }
     }
     fn direct(&mut self, frame: &[u8; 32]) -> Result<()> {
-        self.frames.borrow_mut().push(*frame);
-        if self.disconnect {
-            return Err(io::Error::from_raw_os_error(libc::ENXIO).into());
+        match self.0.pop_front() {
+            Some(Step::Frame(expected)) => {
+                assert_eq!(&expected, frame);
+                Ok(())
+            }
+            Some(Step::FailFrame) => Err(io::Error::from_raw_os_error(libc::ENODEV).into()),
+            s => panic!("unexpected frame: {s:?}"),
         }
-        Ok(())
     }
 }
-fn info() -> [u8; 32] {
+fn info(pid: u16) -> [u8; 32] {
     let mut i = [0; 32];
-    i[..4].copy_from_slice(&[0x1c, 0x1b, 1, 3]);
+    i[..2].copy_from_slice(&0x1b1cu16.to_le_bytes());
+    i[2..4].copy_from_slice(&pid.to_le_bytes());
     i[28] = 4;
     i
 }
+fn transcript(i: [u8; 32], sum: u8) -> VecDeque<Step> {
+    use Step::*;
+    let mut q = VecDeque::from([Read(0x43, 0x1b), Read(0x44, 4), Select(0x61), Select(0x21)]);
+    q.extend(i.map(|b| Read(0x40, b)));
+    q.push_back(Read(0x42, sum));
+    q
+}
+fn reject(mut q: VecDeque<Step>) {
+    let t = Generation::default().ticket();
+    assert!(bind(Mock(&mut q), &AtomicBool::new(false), &t).is_err());
+    assert!(q.is_empty());
+}
 #[test]
-fn model_evidence_is_mandatory_and_family_reads_short_circuit() {
-    for (sig, expected) in [
-        ([0, 3], &[0x43][..]),
-        ([0x1b, 0], &[0x43, 0x44]),
-        ([0x1b, 3], &[0x43, 0x44]),
-    ] {
-        let reads = RefCell::default();
-        let frames = RefCell::default();
-        let t = Generation::default().ticket();
-        let stop = AtomicBool::new(false);
-        assert!(
-            bind(
-                Mock {
-                    reads: &reads,
-                    sig,
-                    info: None,
-                    frames: &frames,
-                    disconnect: false
-                },
-                &stop,
-                &t
-            )
-            .is_err()
-        );
-        assert_eq!(reads.into_inner(), expected);
-        assert!(frames.into_inner().is_empty());
+fn unrelated_signatures_never_reach_selectors() {
+    use Step::*;
+    reject([Read(0x43, 0)].into());
+    reject([Read(0x43, 0x1b), Read(0x44, 2)].into());
+}
+#[test]
+fn family_match_does_not_authorize_dominator_pro_rs_or_unknown_modules() {
+    for pid in [0x0101, 0x0200, 0x0201, 0x0401, 0x0701, 0xffff] {
+        let i = info(pid);
+        reject(transcript(i, crc(&i)));
     }
 }
 #[test]
-fn invalid_vid_pid_protocol_or_crc_never_yields_a_writer() {
-    for offset in [0, 2, 28, 32] {
-        let mut i = info();
-        if offset < 32 {
-            i[offset] = 0xff;
-            if offset == 28 {
-                i[offset] = 3;
-            }
-        }
-        let sum = crc(&i) ^ u8::from(offset == 32);
-        let reads = RefCell::default();
-        let frames = RefCell::default();
-        let t = Generation::default().ticket();
-        assert!(
-            bind(
-                Mock {
-                    reads: &reads,
-                    sig: [0x1a, 1],
-                    info: Some((i, sum)),
-                    frames: &frames,
-                    disconnect: false
-                },
-                &AtomicBool::new(false),
-                &t
-            )
-            .is_err()
-        );
-        assert!(frames.into_inner().is_empty());
+fn wrong_vendor_crc_or_protocol_never_enables_rgb() {
+    for (offset, value) in [(0, 0), (28, 3), (28, 5)] {
+        let mut i = info(0x0300);
+        i[offset] = value;
+        reject(transcript(i, crc(&i)));
     }
+    let i = info(0x0301);
+    reject(transcript(i, crc(&i) ^ 1));
 }
 #[test]
-fn synthetic_verified_module_writes_only_on_apply_and_does_not_retry_errors() {
+fn any_incomplete_or_failed_transaction_stops_without_retry() {
+    let i = info(0x0301);
+    let full = transcript(i, crc(&i));
+    for (n, step) in full.iter().enumerate() {
+        let mut q = transcript(i, crc(&i));
+        q.truncate(n);
+        q.push_back(match *step {
+            Step::Read(r, _) => Step::FailRead(r, libc::ENXIO),
+            Step::Select(r) => Step::FailSelect(r),
+            _ => unreachable!(),
+        });
+        reject(q);
+    }
+}
+fn expected(rgb: [u8; 3]) -> [u8; 32] {
+    let mut p = [0; 32];
+    p[0] = 10;
+    p[1..31].copy_from_slice(&rgb.repeat(10));
+    p[31] = crc(&p[..31]);
+    p
+}
+#[test]
+fn both_pro_sl_ids_accept_repeated_direct_frames_until_first_failure() {
     assert_eq!(crc(b"123456789"), 0xf4);
-    for disconnect in [false, true] {
-        let reads = RefCell::default();
-        let frames = RefCell::default();
-        let t = Generation::default().ticket();
+    for pid in [0x0300, 0x0301] {
+        let i = info(pid);
+        let mut q = transcript(i, crc(&i));
+        q.extend([
+            Step::Frame(expected([1, 2, 3])),
+            Step::Frame(expected([3, 2, 1])),
+            Step::FailFrame,
+        ]);
         let stop = AtomicBool::new(false);
-        let i = info();
-        let mut s = Session::connect(&stop, &t, || {
-            bind(
-                Mock {
-                    reads: &reads,
-                    sig: [0x1b, 4],
-                    info: Some((i, crc(&i))),
-                    frames: &frames,
-                    disconnect,
-                },
-                &stop,
-                &t,
-            )
-        })
-        .unwrap();
-        assert!(frames.borrow().is_empty());
+        let t = Generation::default().ticket();
+        let mut s = Session::connect(&stop, &t, || bind(Mock(&mut q), &stop, &t)).unwrap();
         assert!(matches!(
             s.capabilities(),
             Capabilities::Corsair { protocol: 4 }
         ));
-        assert_eq!(s.set_rgb([1, 2, 3]).is_err(), disconnect);
-        stop.store(true, Ordering::Release);
-        assert!(s.set_rgb([0; 3]).is_err());
+        assert!(s.set_rgb([1, 2, 3]).unwrap());
+        assert!(s.set_rgb([3, 2, 1]).unwrap());
+        assert!(s.set_rgb([1; 3]).is_err());
+        assert!(s.set_rgb([2; 3]).is_err());
         drop(s);
-        let data = frames.into_inner();
-        assert_eq!(data.len(), 1);
-        assert_eq!(data[0][0], 10);
-        assert_eq!(&data[0][1..31], [1, 2, 3].repeat(10));
-        assert_eq!(crc(&data[0]), 0);
-    }
-}
-struct FamilyOnly<F>(F);
-impl<F: FnMut(u8) -> Result<u8>> Transport for FamilyOnly<F> {
-    fn signature_byte(&mut self, reg: u8) -> Result<u8> {
-        (self.0)(reg)
-    }
-    fn direct(&mut self, _: &[u8; 32]) -> Result<()> {
-        panic!("family signature must not authorize RGB")
+        assert!(q.is_empty());
     }
 }
 #[test]
-fn linux_policy_rejects_family_without_selector_writes() {
-    let t = Generation::default().ticket();
-    let result = bind(
-        FamilyOnly(|reg| {
-            Ok(match reg {
-                0x43 => 0x1a,
-                0x44 => 4,
-                _ => panic!("unexpected register"),
-            })
-        }),
-        &AtomicBool::new(false),
-        &t,
-    );
-    assert!(result.err().unwrap().to_string().contains("RGB withheld"));
-}
-#[test]
-fn stale_or_cancelled_verification_stops_before_second_read() {
-    for stale in [false, true] {
-        let g = Generation::default();
-        let t = g.ticket();
-        let stop = AtomicBool::new(false);
-        let result = bind(
-            FamilyOnly(|reg| {
-                assert_eq!(reg, 0x43);
-                if stale {
-                    g.invalidate()
-                } else {
-                    stop.store(true, Ordering::Release)
-                }
-                Ok(0x1a)
-            }),
-            &stop,
-            &t,
-        );
-        let message = result.err().unwrap().to_string();
-        assert!(message.contains(if stale {
-            "Inventory changed"
-        } else {
-            "cancelled"
-        }));
-    }
-}
-#[test]
-fn signature_io_error_is_propagated_without_retry() {
-    let t = Generation::default().ticket();
+fn invalidated_ticket_after_identification_prevents_first_color() {
+    let i = info(0x0300);
+    let mut q = transcript(i, crc(&i));
+    let g = Generation::default();
+    let t = g.ticket();
     let stop = AtomicBool::new(false);
-    for code in [libc::EACCES, libc::ENXIO, libc::EBUSY] {
-        let mut calls = 0;
-        let result = bind(
-            FamilyOnly(|reg| {
-                calls += 1;
-                assert_eq!(reg, 0x43);
-                Err(io::Error::from_raw_os_error(code).into())
-            }),
-            &stop,
-            &t,
-        );
-        let error = result.err().unwrap();
-        assert_eq!(
-            error.downcast_ref::<io::Error>().unwrap().raw_os_error(),
-            Some(code)
-        );
-        assert_eq!(calls, 1);
+    let mut s = Session::connect(&stop, &t, || bind(Mock(&mut q), &stop, &t)).unwrap();
+    g.invalidate();
+    assert!(s.set_rgb([0; 3]).is_err());
+    drop(s);
+    assert!(q.is_empty());
+}
+#[test]
+fn cancellation_between_selectors_blocks_binary_start() {
+    struct Cancel<'a>(&'a AtomicBool);
+    impl Transport for Cancel<'_> {
+        fn read(&mut self, r: u8) -> Result<u8> {
+            Ok(match r {
+                0x43 => 0x1b,
+                0x44 => 4,
+                _ => panic!(),
+            })
+        }
+        fn write_zero(&mut self, r: u8) -> Result<()> {
+            assert_eq!(r, 0x61);
+            self.0.store(true, Ordering::Release);
+            Ok(())
+        }
+        fn direct(&mut self, _: &[u8; 32]) -> Result<()> {
+            panic!()
+        }
     }
+    let stop = AtomicBool::new(false);
+    let t = Generation::default().ticket();
+    assert!(bind(Cancel(&stop), &stop, &t).is_err());
+    assert!(stop.load(Ordering::Acquire));
 }
 #[test]
 fn locks_follow_the_open_fd_and_distinct_modules_do_not_conflict() {
