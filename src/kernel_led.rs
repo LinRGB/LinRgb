@@ -1,6 +1,7 @@
 use std::{
     fs,
     io::{self, Seek, SeekFrom, Write},
+    os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Path, PathBuf},
 };
 
@@ -8,11 +9,7 @@ pub fn detect(root: &Path) -> io::Result<Vec<PathBuf>> {
     let mut devices = Vec::new();
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
-        if fs::read_to_string(path.join("multi_index"))
-            .is_ok_and(|index| intensities(&index, 1, [0; 3]).is_some())
-            && path.join("multi_intensity").is_file()
-            && path.join("brightness").is_file()
-        {
+        if path.join("multi_index").is_file() {
             devices.push(path);
         }
     }
@@ -47,7 +44,7 @@ fn intensities(index: &str, max: u32, rgb: [u8; 3]) -> Option<String> {
         .then(|| values.join(" ") + "\n")
 }
 
-pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + use<>> {
+pub fn channels(path: &Path) -> io::Result<(String, u32)> {
     let index = fs::read_to_string(path.join("multi_index"))?;
     let max = fs::read_to_string(path.join("max_brightness"))?;
     let max = max
@@ -57,6 +54,17 @@ pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + u
     if intensities(&index, max, [0; 3]).is_none() {
         return Err(io::Error::other("Unsupported RGB channels"));
     }
+    Ok((index, max))
+}
+
+pub fn open(path: &Path, inode: u64) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + use<>> {
+    let dir = fs::File::open(path)?;
+    if dir.metadata()?.ino() != inode {
+        return Err(io::Error::other("LED attachment changed"));
+    }
+    // Resolve all attributes through the same open kernfs directory, never a retargeted alias.
+    let path = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()));
+    let (index, max) = channels(&path)?;
     // Open both attributes before changing anything, so missing permissions leave the LED untouched.
     let mut brightness = fs::OpenOptions::new()
         .write(true)
@@ -91,7 +99,7 @@ mod tests {
             fs::write(dir.join("max_brightness"), "255\n")?;
             fs::write(dir.join("brightness"), "000\n")?;
             fs::write(dir.join("multi_intensity"), "")?;
-            let mut set = open(&dir)?;
+            let mut set = open(&dir, dir.metadata()?.ino())?;
             set([111, 222, 123])?;
             assert_eq!(fs::read_to_string(dir.join("brightness"))?, "255\n");
             fs::write(dir.join("brightness"), "127\n")?;
@@ -105,6 +113,36 @@ mod tests {
         })();
         fs::remove_dir_all(dir)?;
         result
+    }
+
+    #[test]
+    fn replacement_at_same_path_cannot_receive_a_stale_color() -> io::Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("linrgb-led-{}", gtk::glib::uuid_string_random()));
+        let path = root.join("led");
+        fs::create_dir_all(&path)?;
+        let setup = || -> io::Result<()> {
+            for (k, v) in [
+                ("multi_index", "red green blue"),
+                ("max_brightness", "31"),
+                ("multi_intensity", "0 0 0"),
+                ("brightness", "0"),
+            ] {
+                fs::write(path.join(k), v)?;
+            }
+            Ok(())
+        };
+        setup()?;
+        let inode = path.metadata()?.ino();
+        let mut before_remove = open(&path, inode)?;
+        fs::rename(&path, root.join("removed"))?;
+        fs::create_dir(&path)?;
+        setup()?;
+        assert!(open(&path, inode).is_err());
+        before_remove([1, 2, 3])?; // fixture fds still refer to the old files, never the replacement
+        assert_eq!(fs::read_to_string(path.join("multi_intensity"))?, "0 0 0");
+        drop(before_remove);
+        fs::remove_dir_all(root)
     }
 
     #[test]

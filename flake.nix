@@ -22,7 +22,7 @@
         };
       devShells.${system}.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [ cargo rustc rustfmt clippy pkg-config ];
-        buildInputs = [ pkgs.gtk4 ];
+        buildInputs = [ pkgs.gtk4 pkgs.udev ];
         shellHook = ''
           # Cairo avoids loading the GPU rendering stack for the mostly static interface.
           export GSK_RENDERER="''${GSK_RENDERER:-cairo}"

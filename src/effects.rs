@@ -9,18 +9,18 @@ use std::{
 #[derive(Clone, PartialEq, Eq)]
 pub enum Target {
     EneGpu(PathBuf),
-    Board,
-    BoardArgb,
+    Board(PathBuf),
+    BoardArgb(PathBuf),
     Ram(u16),
     Corsair(u16),
-    Kernel(PathBuf),
+    Kernel(PathBuf, u64),
     LampArray(PathBuf),
 }
 
-type Writer = Box<dyn FnMut([u8; 3]) -> Result<(), Box<dyn Error>>>;
+type Writer<'a> = Box<dyn FnMut([u8; 3]) -> Result<(), Box<dyn Error>> + 'a>;
 
 impl Target {
-    fn open(self) -> Result<Writer, Box<dyn Error>> {
+    fn open(self, stop: &AtomicBool) -> Result<Writer<'_>, Box<dyn Error>> {
         match self {
             Self::EneGpu(card) => {
                 let mut device = crate::astral::open(&card)?;
@@ -31,14 +31,14 @@ impl Target {
                 let mut device = crate::board::open_ram(address)?;
                 Ok(Box::new(move |rgb| device.set(rgb)))
             }
-            Self::Board => Ok(Box::new(crate::board::open()?)),
-            Self::BoardArgb => Ok(Box::new(crate::board::open_argb()?)),
-            Self::Kernel(path) => {
-                let mut write = crate::kernel_led::open(&path)?;
+            Self::Board(path) => Ok(Box::new(crate::board::open(&path)?)),
+            Self::BoardArgb(path) => Ok(Box::new(crate::board::open_argb(&path)?)),
+            Self::Kernel(path, inode) => {
+                let mut write = crate::kernel_led::open(&path, inode)?;
                 Ok(Box::new(move |rgb| Ok(write(rgb)?)))
             }
             Self::LampArray(path) => {
-                let mut write = crate::lamp_array::open(&path)?;
+                let mut write = crate::lamp_array::open(&path, stop)?;
                 Ok(Box::new(move |rgb| Ok(write(rgb)?)))
             }
         }
@@ -133,9 +133,9 @@ fn transport_group(target: &Target) -> usize {
     match target {
         Target::EneGpu(_) => 0,
         Target::Ram(_) | Target::Corsair(_) => 1,
-        Target::Board | Target::BoardArgb => 2,
+        Target::Board(_) | Target::BoardArgb(_) => 2,
         Target::LampArray(_) => 3,
-        Target::Kernel(_) => 0,
+        Target::Kernel(..) => 0,
     }
 }
 
@@ -159,7 +159,7 @@ pub fn run(
     if !effect.animated()
         || targets
             .iter()
-            .any(|(_, target)| matches!(target, Target::Kernel(_)))
+            .any(|(_, target)| matches!(target, Target::Kernel(..)))
     {
         return run_group(targets, effect, stop, start, FRAME_INTERVAL, report);
     }
@@ -213,7 +213,10 @@ fn run_group(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        match target.open().and_then(|mut writer| {
+        match target.open(stop).and_then(|mut writer| {
+            if stop.load(Ordering::Acquire) {
+                return Err("RGB operation cancelled".into());
+            }
             let color = effect.sample(start.elapsed().as_secs_f64());
             writer(color)?;
             Ok((writer, color))
@@ -274,7 +277,7 @@ mod tests {
         super::run(
             vec![(
                 "Missing LED".into(),
-                Target::Kernel("/dev/null/linrgb-led".into()),
+                Target::Kernel("/dev/null/linrgb-led".into(), 0),
             )],
             Effect::ColorCycle(1.0, 6.0),
             &std::sync::atomic::AtomicBool::new(false),
@@ -329,7 +332,7 @@ mod tests {
         let hub = transport_group(&Target::LampArray("hub".into()));
         for target in [
             Target::EneGpu("gpu".into()),
-            Target::Board,
+            Target::Board("board".into()),
             Target::Ram(0x72),
         ] {
             assert_ne!(transport_group(&target), hub);

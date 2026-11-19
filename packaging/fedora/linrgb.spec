@@ -12,6 +12,7 @@ ExclusiveArch:  x86_64
 BuildRequires:  cargo
 BuildRequires:  gcc
 BuildRequires:  pkgconfig(gtk4)
+BuildRequires:  pkgconfig(libudev)
 
 %description
 LinRgb controls supported USB HID and I2C lighting controllers through a GTK4 desktop interface.

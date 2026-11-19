@@ -100,7 +100,7 @@ The [Debian recipe](packaging/debian/) builds a local `amd64` package. Debian 13
 
 ```bash
 sudo apt update
-sudo apt install build-essential ca-certificates curl debhelper git libgtk-4-dev pkgconf rustup
+sudo apt install build-essential ca-certificates curl debhelper git libgtk-4-dev libudev-dev pkgconf rustup
 rustup toolchain install 1.99.1 --profile minimal
 
 git clone https://github.com/LinRGB/LinRgb.git
@@ -114,7 +114,7 @@ sudo apt install ./linrgb_1.0.0~beta.1-4_amd64.deb
 The [RPM spec](packaging/fedora/linrgb.spec) builds a local `x86_64` package. It is not published on COPR.
 
 ```bash
-sudo dnf install cargo gcc git gtk4-devel rpm-build rpmdevtools
+sudo dnf install cargo gcc git gtk4-devel systemd-devel rpm-build rpmdevtools
 rpmdev-setuptree
 
 git clone https://github.com/LinRGB/LinRgb.git
@@ -159,7 +159,9 @@ LinRgb creates `$XDG_CONFIG_HOME/LinRGB/themes/` on first launch, using `~/.conf
 
 ### Refresh and report a device
 
-Discovery runs at startup, on manual refresh, on relevant `hidraw`/`i2c-dev` node changes, and after a logind resume notification. Refresh manually for LED-only changes or when event monitoring is unavailable. Rediscovery does not send a color, restore an effect, or grant permissions. A PCI match alone never confirms the firmware.
+Discovery runs at startup, on manual refresh, on udev events (including Linux LED registration/removal) and after a logind resume notification. There is no periodic inventory scan. If a monitor is unavailable, use **Refresh**. Apply waits for a fresh inventory; rediscovery never sends a color or restarts an effect. A new HID attachment must be selected again, even on the same USB port. If an active target disappears or loses access, LinRgb cancels the current operation; select the remaining devices and apply again. A suspend notification also cancels the operation. A transfer already submitted to the kernel cannot be recalled.
+
+Linux multicolor LED rows show the channel order and maximum brightness reported by the kernel. A USB report layout or PCI match is not a firmware check. Unknown LampArray layouts and GPUs without a direct driver remain inventory-only.
 
 Run `linrgb --diagnostics` without `sudo` for a local JSON summary. This command does not start GTK or open device nodes. It reports backend matches, possible DIMM addresses and access hints, not serial numbers, raw sysfs names, hostnames or profiles. Nothing is uploaded. When reporting an issue, review the report before sharing it, and state which component, action and LinRgb revision were involved.
 

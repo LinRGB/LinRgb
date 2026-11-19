@@ -7,7 +7,7 @@ use std::{
     collections::BTreeSet,
     ffi::CString,
     fs, io,
-    os::unix::ffi::OsStrExt,
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
 };
 
@@ -40,6 +40,23 @@ pub struct Device {
 }
 
 impl Device {
+    pub fn can_restore_from(&self, previous: &Self) -> bool {
+        self.access == Access::Available
+            && previous.access == Access::Available
+            && self.key == previous.key
+            && self.target == previous.target
+    }
+
+    pub fn support_label(&self) -> &'static str {
+        match &self.target {
+            Target::BoardArgb(_) => tr("experimental layout", "zones expérimentales"),
+            Target::Board(_) => tr("matched board layout", "modèle de carte reconnu"),
+            Target::LampArray(_) => tr("matched HID layout", "descripteur HID reconnu"),
+            Target::Kernel(..) => tr("kernel RGB interface", "interface RGB du noyau"),
+            Target::EneGpu(_) | Target::Ram(_) | Target::Corsair(_) => "", // labels already state the pending check
+        }
+    }
+
     pub fn bulk_selectable(&self) -> bool {
         !matches!(self.target, Target::Ram(_) | Target::Corsair(_))
             && self.access == Access::Available
@@ -57,9 +74,9 @@ impl Inventory {
     fn add(&mut self, target: Target, name: String, access: Access) {
         let key = match &target {
             Target::LampArray(path) => Target::LampArray(hid_key(path)),
-            Target::Kernel(path) => {
-                Target::Kernel(fs::canonicalize(path).unwrap_or_else(|_| path.clone()))
-            }
+            Target::Board(path) => Target::Board(hid_key(path)),
+            Target::BoardArgb(path) => Target::BoardArgb(hid_key(path)),
+            Target::Kernel(..) => target.clone(),
             _ => target.clone(),
         };
         if !self.devices.iter().any(|d| d.key == key) {
@@ -80,10 +97,10 @@ impl Inventory {
             let (backend, matched, address) = match &d.target {
                 Target::Ram(a) => ("ene-dram", "slot-candidate", Some(a)),
                 Target::Corsair(a) => ("corsair-dram", "slot-candidate", Some(a)),
-                Target::Board => ("aura-fixed", "dmi-and-usb", None),
-                Target::BoardArgb => ("aura-argb", "experimental-board-layout", None),
+                Target::Board(_) => ("aura-fixed", "dmi-and-usb", None),
+                Target::BoardArgb(_) => ("aura-argb", "experimental-board-layout", None),
                 Target::EneGpu(_) => ("ene-gpu", "pci-candidate", None),
-                Target::Kernel(_) => ("linux-multicolor", "kernel-interface", None),
+                Target::Kernel(..) => ("linux-multicolor", "kernel-interface", None),
                 Target::LampArray(_) => ("hid-lamparray", "known-report-layout", None),
             };
             serde_json::json!({"backend":backend, "match":matched, "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
@@ -111,12 +128,6 @@ fn hid_key(path: &Path) -> PathBuf {
     } else {
         canonical
     }
-}
-
-fn lamp_node(path: &Path) -> Option<PathBuf> {
-    let mut nodes = fs::read_dir(path.join("hidraw")).ok()?;
-    let first = nodes.next()?.ok()?.file_name();
-    nodes.next().is_none().then(|| first.into())
 }
 
 pub fn scan(sys: &Path, dev: &Path) -> Inventory {
@@ -171,18 +182,22 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
             match board::hid_node(&raw, hid) {
                 Ok(node) => {
                     let state = access(&dev.join(&node), libc::W_OK);
-                    if state == Access::Available
-                        && let Ok(parent) = raw.join(node).join("device").canonicalize()
-                    {
-                        owners.insert(parent);
-                    }
-                    out.add(Target::Board, format!("{model} · Aura RGB"), state);
-                    if model == board::B550 {
+                    if let Ok(instance) = raw.join(node).join("device").canonicalize() {
+                        if state == Access::Available {
+                            owners.insert(instance.clone());
+                        }
                         out.add(
-                            Target::BoardArgb,
-                            format!("{model} · Addressable RGB Header 1"),
+                            Target::Board(instance.clone()),
+                            format!("{model} · Aura RGB"),
                             state,
                         );
+                        if model == board::B550 {
+                            out.add(
+                                Target::BoardArgb(instance),
+                                format!("{model} · Addressable RGB Header 1"),
+                                state,
+                            );
+                        }
                     }
                 }
                 Err(e) => out.notes.push(format!("{model} · Aura USB: {e}")),
@@ -220,14 +235,17 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
         Ok(devices) => {
             for (name, path) in devices {
                 if let Some(path) = path {
-                    let state =
-                        lamp_node(&path).map_or(Access::Missing, |n| access(&dev.join(n), rw));
-                    if state == Access::Available
-                        && let Ok(parent) = path.canonicalize()
-                    {
-                        owners.insert(parent);
+                    let Ok(instance) = path.canonicalize() else {
+                        continue;
+                    };
+                    let state = crate::hid::node(&instance)
+                        .ok()
+                        .and_then(|p| p.file_name().map(|n| access(&dev.join(n), rw)))
+                        .unwrap_or(Access::Missing);
+                    if state == Access::Available {
+                        owners.insert(instance.clone());
                     }
-                    out.add(Target::LampArray(path), format!("{name} · WDL"), state);
+                    out.add(Target::LampArray(instance), format!("{name} · WDL"), state);
                 } else {
                     out.notes.push(format!(
                         "{name} · {}",
@@ -243,21 +261,35 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
         Ok(leds) => {
             for path in leds {
                 // Don't offer a second writer for a class LED below a claimed native controller.
-                if path
-                    .canonicalize()
-                    .is_ok_and(|p| owners.iter().any(|owner| p.starts_with(owner)))
-                {
+                let Ok(path) = path.canonicalize() else {
+                    continue;
+                };
+                if owners.iter().any(|owner| path.starts_with(owner)) {
                     continue;
                 }
+                let Ok(meta) = path.metadata() else {
+                    continue;
+                };
+                let (channels, max) = match kernel_led::channels(&path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        out.notes.push(format!(
+                            "{} · LED: {e}",
+                            path.file_name().unwrap_or_default().to_string_lossy()
+                        ));
+                        continue;
+                    }
+                };
                 let mut state = access(&path.join("multi_intensity"), libc::W_OK);
                 if state == Access::Available {
                     state = access(&path.join("brightness"), libc::W_OK);
                 }
                 let label = format!(
-                    "{} · Linux LED",
-                    path.file_name().unwrap_or_default().to_string_lossy()
+                    "{} · Linux LED · {} (max {max})",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    channels.trim()
                 );
-                out.add(Target::Kernel(path), label, state);
+                out.add(Target::Kernel(path, meta.ino()), label, state);
             }
         }
         Err(e) if e.kind() != io::ErrorKind::NotFound => out.notes.push(format!("LED: {e}")),

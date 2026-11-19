@@ -99,6 +99,7 @@ fn aliases_share_one_led_and_removal_clears_inventory() {
     f.put("sys/devices/private-led-name/multi_index", "green red blue");
     f.put("sys/devices/private-led-name/multi_intensity", "0 0 0");
     f.put("sys/devices/private-led-name/brightness", "0");
+    f.put("sys/devices/private-led-name/max_brightness", "255");
     for name in ["alias", "private-led-name"] {
         symlink("../../devices/private-led-name", dir.join(name)).unwrap();
     }
@@ -117,6 +118,9 @@ fn aliases_share_one_led_and_removal_clears_inventory() {
         assert_eq!(f.scan().devices[0].access, Access::Denied);
     }
     fs::remove_file(p).unwrap();
+    assert_eq!(f.scan().devices[0].access, Access::Missing);
+    fs::remove_file(dir.join("alias")).unwrap();
+    fs::remove_file(dir.join("private-led-name")).unwrap();
     assert!(f.scan().devices.is_empty());
 }
 
@@ -153,12 +157,14 @@ fn changing_hid_instance_preserves_port_identity_but_not_transport_path() {
         let inv = f.scan();
         assert_eq!(inv.devices.len(), 1);
         assert!(!inv.diagnostics().to_string().contains("Private"));
-        let d = &inv.devices[0];
-        if let Some((key, target)) = old.as_ref() {
-            assert!(d.key == *key && d.target != *target);
+        let d = inv.devices.into_iter().next().unwrap();
+        if let Some(previous) = old.as_ref() {
+            assert!(!d.can_restore_from(previous));
+            assert!(d.key == previous.key && d.target != previous.target);
         }
         assert!(matches!(d.target, Target::LampArray(_))); // no second writer via LED class
-        old = Some((d.key.clone(), d.target.clone()));
+        assert!(f.scan().devices[0].can_restore_from(&d));
+        old = Some(d);
         fs::remove_file(led).unwrap();
         fs::remove_file(alias).unwrap();
         assert!(f.scan().devices.is_empty());

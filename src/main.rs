@@ -9,6 +9,7 @@ mod device_list;
 mod discovery;
 mod effects;
 mod hardware;
+mod hid;
 mod i18n;
 mod kernel_led;
 mod lamp_array;
@@ -155,7 +156,6 @@ fn main() -> glib::ExitCode {
         lighting.add_css_class("lighting-card");
         lighting.append(&label(tr("Lighting", "Éclairage"), "title-2"));
         workspace.append(&lighting);
-        let selected_targets = device_list::install(&list, &inventory, &search, &refresh, &all);
         let breathing = tr("Breathing", "Respiration");
         let cycle = tr("Color cycle", "Cycle de couleurs");
         let mode = gtk::DropDown::from_strings(&[solid, fade, breathing, cycle]);
@@ -211,7 +211,7 @@ fn main() -> glib::ExitCode {
         alternate.connect_toggled(move |_| update_mode());
         profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &saturation);
         let job = Rc::new(RefCell::new(
-            None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>)>,
+            None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>, Vec<effects::Target>)>,
         ));
         let running = job.clone();
         let quitting = Rc::new(Cell::new(false));
@@ -230,7 +230,7 @@ fn main() -> glib::ExitCode {
                 window.hide();
                 return glib::Propagation::Stop;
             }
-            if let Some((flag, _)) = running.borrow().as_ref() {
+            if let Some((flag, _, _)) = running.borrow().as_ref() {
                 flag.store(true, Ordering::Relaxed);
             }
             glib::Propagation::Proceed
@@ -248,6 +248,18 @@ fn main() -> glib::ExitCode {
         lighting.append(&status);
         content.append(&preview::panel(&mode, &hex, &end, &period, &alternate, &saturation));
         let buttons = [apply.downgrade(), reset.downgrade()];
+        let lifecycle_job = job.clone();
+        let lifecycle_status = status.downgrade();
+        let lifecycle_buttons = buttons.clone();
+        let selected_targets = device_list::install(&list, &inventory, &search, &refresh, &all, move |available| {
+            if let Some((flag, worker, targets)) = lifecycle_job.borrow().as_ref()
+                && !worker.is_finished()
+                && !targets.iter().all(|t| available.iter().any(|d| d.access == discovery::Access::Available && d.target == *t))
+                && !flag.swap(true, Ordering::Release) {
+                if let Some(label) = lifecycle_status.upgrade() { label.set_text(tr("RGB operation stopped: device availability changed.", "Éclairage arrêté : disponibilité des périphériques modifiée.")); }
+                for b in lifecycle_buttons.iter().filter_map(|b| b.upgrade()) { b.set_sensitive(true); }
+            }
+        });
         let submit = move |reset: bool| {
             if buttons.iter().filter_map(|button| button.upgrade()).any(|button| !button.is_sensitive()) {
                 return;
@@ -261,12 +273,13 @@ fn main() -> glib::ExitCode {
                 status.set_text(tr("Enter valid HEX colors for this effect.", "Saisissez des couleurs HEX valides pour cet effet."));
                 return;
             };
-            let targets = selected_targets();
+            let Some(targets) = selected_targets() else { status.set_text(tr("Waiting for a fresh device inventory.", "En attente d’un inventaire à jour.")); return; };
             if targets.is_empty() {
                 status.set_text(tr("No devices selected.", "Aucun périphérique sélectionné."));
                 return;
             }
-            let previous = job.borrow_mut().take().map(|(flag, worker)| {
+            let endpoints = targets.iter().map(|(_, target)| target.clone()).collect();
+            let previous = job.borrow_mut().take().map(|(flag, worker, _)| {
                 flag.store(true, Ordering::Relaxed);
                 worker
             });
@@ -281,7 +294,7 @@ fn main() -> glib::ExitCode {
                     effects::run(targets, effect, &flag, &|name, state| { let _ = send.send((name, state)); });
                 }
             });
-            *job.borrow_mut() = Some((cancel.clone(), worker));
+            *job.borrow_mut() = Some((cancel.clone(), worker, endpoints));
             if reset {
                 mode.set_selected(0);
                 hex.set_text("#FFFFFF");

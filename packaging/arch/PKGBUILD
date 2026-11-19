@@ -6,8 +6,8 @@ arch=('x86_64')
 url='https://github.com/Yuna404/LinRgb'
 # The upstream project has not declared a license.
 license=('LicenseRef-NotDeclared')
-depends=('gtk4')
-makedepends=('rust' 'pkgconf')
+depends=('gtk4' 'systemd-libs')
+makedepends=('rust' 'pkgconf' 'systemd')
 _commit=7cb4af8352d93096925db2fc30b4747dca78c8a3
 source=("linrgb-${_commit}.tar.gz::https://codeload.github.com/Yuna404/LinRgb/tar.gz/${_commit}")
 sha256sums=('bff34a7f10209fca458d8b065a3c1f7c781ca305e140d532c7cde39efa9c4689')

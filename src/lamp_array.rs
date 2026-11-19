@@ -1,9 +1,6 @@
 use std::{
     fs, io,
-    os::{
-        fd::AsRawFd,
-        unix::fs::{FileTypeExt, MetadataExt},
-    },
+    os::fd::AsRawFd,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -119,7 +116,10 @@ fn feature(file: &fs::File, number: libc::c_ulong, report: &mut [u8]) -> io::Res
     Ok(())
 }
 
-pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + use<>> {
+pub fn open<'a>(
+    path: &Path,
+    stop: &'a std::sync::atomic::AtomicBool,
+) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + use<'a>> {
     let details = fs::read_to_string(path.join("uevent"))?;
     if !details
         .lines()
@@ -128,31 +128,7 @@ pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + u
     {
         return Err(io::Error::other("Unsupported LampArray report layout"));
     }
-    let mut nodes = fs::read_dir(path.join("hidraw"))?;
-    let node = nodes
-        .next()
-        .transpose()?
-        .ok_or_else(|| io::Error::other("LampArray hidraw node missing"))?;
-    if nodes.next().is_some() {
-        return Err(io::Error::other("Ambiguous LampArray hidraw node"));
-    }
-    let device = Path::new("/dev").join(node.file_name());
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&device)
-        .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", device.display())))?;
-    let metadata = file.metadata()?;
-    let numbers = format!(
-        "{}:{}",
-        libc::major(metadata.rdev()),
-        libc::minor(metadata.rdev())
-    );
-    if !metadata.file_type().is_char_device()
-        || fs::read_to_string(node.path().join("dev"))?.trim() != numbers
-    {
-        return Err(io::Error::other("LampArray hidraw node changed"));
-    }
+    let file = crate::hid::open(path, "HID_ID=0003:000036BC:00001001", true)?;
     let mut attributes = [0; 23];
     attributes[0] = 3;
     feature(&file, 7, &mut attributes)?;
@@ -165,6 +141,9 @@ pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + u
     if interval > Duration::from_secs(1) {
         return Err(io::Error::other("Unexpected LampArray update interval"));
     }
+    if stop.load(std::sync::atomic::Ordering::Acquire) {
+        return Err(io::Error::other("RGB operation cancelled"));
+    }
     feature(&file, 6, &mut [8, 0])?; // Switch from autonomous lighting to host control.
     let mut last = None::<Instant>;
     Ok(move |rgb| {
@@ -173,6 +152,9 @@ pub fn open(path: &Path) -> io::Result<impl FnMut([u8; 3]) -> io::Result<()> + u
             if !remaining.is_zero() {
                 std::thread::sleep(remaining);
             }
+        }
+        if stop.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(io::Error::other("RGB operation cancelled"));
         }
         let now = Instant::now();
         feature(&file, 6, &mut range_report(lamps, rgb))?;

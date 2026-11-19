@@ -4,6 +4,7 @@
   pkg-config,
   wrapGAppsHook4,
   gtk4,
+  udev,
 }:
 rustPlatform.buildRustPackage {
   pname = "linrgb";
@@ -21,7 +22,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ../Cargo.lock;
   nativeBuildInputs = [ pkg-config wrapGAppsHook4 ];
-  buildInputs = [ gtk4 ];
+  buildInputs = [ gtk4 udev ];
   preFixup = ''
     gappsWrapperArgs+=(--set-default GSK_RENDERER cairo)
   '';

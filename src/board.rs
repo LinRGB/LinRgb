@@ -2,7 +2,6 @@ use std::{
     error::Error,
     fs,
     io::Write,
-    os::fd::AsRawFd,
     path::{Path, PathBuf},
 };
 
@@ -44,10 +43,10 @@ pub fn b550_present() -> bool {
     fs::read_to_string("/sys/class/dmi/id/board_name").is_ok_and(|name| name.trim() == B550)
 }
 
-pub fn open() -> BoardResult<impl FnMut([u8; 3]) -> BoardResult<()>> {
+pub fn open(instance: &Path) -> BoardResult<impl FnMut([u8; 3]) -> BoardResult<()> + use<>> {
     let model = fs::read_to_string("/sys/class/dmi/id/board_name")?;
     let (hid_id, count) = fixed_zone(model.trim()).ok_or("Unsupported motherboard.")?;
-    let mut hid = open_hid(hid_id)?;
+    let mut hid = crate::hid::open(instance, hid_id, false)?;
     Ok(move |rgb| send(&mut hid, &report(rgb, count)))
 }
 
@@ -56,12 +55,12 @@ fn b550_argb_reports(rgb: [u8; 3]) -> [[u8; 65]; 5] {
     std::array::from_fn(|i| direct_report(rgb, if i == 4 { 0x80 } else { 0 }, (i * 20) as u8, 20))
 }
 
-pub fn open_argb() -> BoardResult<impl FnMut([u8; 3]) -> BoardResult<()>> {
+pub fn open_argb(instance: &Path) -> BoardResult<impl FnMut([u8; 3]) -> BoardResult<()> + use<>> {
     if !b550_present() {
         return Err("Unsupported motherboard for Aura ARGB.".into());
     }
     let (hid_id, _) = fixed_zone(B550).ok_or("Missing B550 Aura configuration.")?;
-    let mut hid = open_hid(hid_id)?;
+    let mut hid = crate::hid::open(instance, hid_id, false)?;
     let mut gen1 = [0; 65];
     gen1[..5].copy_from_slice(&[0xec, 0x52, 0x53, 0, 1]);
     send(&mut hid, &gen1)?;
@@ -89,39 +88,6 @@ pub fn hid_node(root: &Path, hid_id: &str) -> BoardResult<PathBuf> {
         return Err("Expected exactly one Aura USB controller.".into());
     };
     Ok(PathBuf::from(path))
-}
-
-fn open_hid(hid_id: &str) -> BoardResult<fs::File> {
-    let path = hid_node(Path::new("/sys/class/hidraw"), hid_id)?;
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .open(Path::new("/dev").join(path))?;
-    // Linux HIDIOCGRAWINFO (_IOR('H', 3, struct hidraw_devinfo)), on our x86_64 target.
-    // Check the open fd, not just the recyclable /dev/hidrawN name.
-    let mut raw = HidrawInfo::default();
-    if unsafe { libc::ioctl(file.as_raw_fd(), 0x80084803, &mut raw) } < 0 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    if !matches_hid(raw, hid_id) {
-        return Err("Aura controller changed before opening.".into());
-    }
-    Ok(file)
-}
-
-#[repr(C)]
-#[derive(Default)]
-struct HidrawInfo {
-    bus: u32,
-    vendor: u16,
-    product: u16,
-}
-const _: () = assert!(std::mem::size_of::<HidrawInfo>() == 8);
-
-fn matches_hid(raw: HidrawInfo, id: &str) -> bool {
-    format!(
-        "HID_ID={:04X}:{:08X}:{:08X}",
-        raw.bus, raw.vendor, raw.product
-    ) == id
 }
 
 fn send(hid: &mut fs::File, report: &[u8; 65]) -> BoardResult<()> {
@@ -176,17 +142,6 @@ pub fn ram_bus_at(controller: &Path) -> BoardResult<u32> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn hid_fd_must_match_usb_bus_vendor_and_product() {
-        let raw = || super::HidrawInfo {
-            bus: 3,
-            vendor: 0x0b05,
-            product: 0x1939,
-        };
-        assert!(super::matches_hid(raw(), "HID_ID=0003:00000B05:00001939"));
-        assert!(!super::matches_hid(raw(), "HID_ID=0003:00000B05:000018F3"));
-    }
-
     #[test]
     fn board_report_targets_fixed_zone_only() {
         let report = super::report([1, 2, 3], 8);
