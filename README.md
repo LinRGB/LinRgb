@@ -10,11 +10,11 @@ A native Linux RGB controller written in Rust and GTK4. Preview a color or effec
 
 Get the package for your distribution and `SHA256SUMS` from the [beta releases](https://github.com/LinRGB/LinRgb/releases). From your downloads directory, verify the file with `sha256sum --ignore-missing -c SHA256SUMS`; make sure **your package** is listed as `OK`. Install one package, not all three:
 
-| System | Install the downloaded beta 2 file |
+| System | Install the downloaded beta 3 file |
 |---|---|
-| Arch Linux x86_64 | `sudo pacman -U ./linrgb-1.0.0-beta.2-arch-x86_64.pkg.tar.zst` |
-| Debian 13 amd64 | `sudo apt install ./linrgb-1.0.0-beta.2-debian13-amd64.deb` |
-| Fedora 44 x86_64 | `sudo dnf install ./linrgb-1.0.0-beta.2-fedora44-x86_64.rpm` |
+| Arch Linux x86_64 | `sudo pacman -U ./linrgb-1.0.0-beta.3-arch-x86_64.pkg.tar.zst` |
+| Debian 13 amd64 | `sudo apt install ./linrgb-1.0.0-beta.3-debian13-amd64.deb` |
+| Fedora 44 x86_64 | `sudo dnf install ./linrgb-1.0.0-beta.3-fedora44-x86_64.rpm` |
 
 These are standalone packages, not an AUR submission, Debian repository or Fedora COPR. They install the desktop launcher, icon, targeted udev rules and `i2c-dev` modules-load entry. Reboot if the new device permissions have not taken effect. Run `linrgb` as your **normal desktop user**, never as root.
 
