@@ -2,7 +2,7 @@
   <img src="ressources/LinRGB-banner.png" alt="LinRgb banner" width="900">
 </p>
 
-# LinRgb — 1.0 Beta 1
+# LinRgb — Your Linux RGB controller, written in Rust
 
 **AI disclosure:** LinRgb was built with AI assistance under the maintainer’s direction. AI generated much of the code and documentation, and the maintainer tested selected hardware and workflows. A passing software test does not mean an unlisted device is safe or supported.
 
@@ -15,7 +15,7 @@ LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64
 With Nix Flakes enabled, run:
 
 ```bash
-nix run github:Yuna404/LinRgb/main
+nix run github:LinRGB/LinRgb/main
 ```
 
 This downloads or builds LinRgb from `main` and opens it. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
@@ -26,7 +26,7 @@ Add LinRgb to your flake inputs:
 
 ```nix
 inputs.linrgb = {
-  url = "github:Yuna404/LinRgb/main";
+  url = "github:LinRGB/LinRgb/main";
 };
 ```
 
@@ -64,7 +64,7 @@ The [PKGBUILD](packaging/arch/PKGBUILD) builds a local `x86_64` package from a p
 ```bash
 sudo pacman -Syu --needed base-devel git
 
-git clone https://github.com/Yuna404/LinRgb.git
+git clone https://github.com/LinRGB/LinRgb.git
 cd LinRgb/packaging/arch
 makepkg -si
 ```
@@ -82,7 +82,7 @@ sudo apt update
 sudo apt install build-essential ca-certificates curl debhelper git libgtk-4-dev pkgconf rustup
 rustup toolchain install 1.99.1 --profile minimal
 
-git clone https://github.com/Yuna404/LinRgb.git
+git clone https://github.com/LinRGB/LinRgb.git
 cd LinRgb
 sh packaging/debian/build.sh
 sudo apt install ./linrgb_1.0.0~beta.1-4_amd64.deb
@@ -96,7 +96,7 @@ The [RPM spec](packaging/fedora/linrgb.spec) builds a local `x86_64` package. It
 sudo dnf install cargo gcc git gtk4-devel rpm-build rpmdevtools
 rpmdev-setuptree
 
-git clone https://github.com/Yuna404/LinRgb.git
+git clone https://github.com/LinRGB/LinRgb.git
 cd LinRgb
 spectool -g -R packaging/fedora/linrgb.spec
 rpmbuild -bb packaging/fedora/linrgb.spec
