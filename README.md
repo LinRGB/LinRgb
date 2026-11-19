@@ -81,7 +81,7 @@ rustup toolchain install 1.99.1 --profile minimal
 git clone https://github.com/Yuna404/LinRgb.git
 cd LinRgb
 sh packaging/debian/build.sh
-sudo apt install ./linrgb_1.0.0~beta.1-3_amd64.deb
+sudo apt install ./linrgb_1.0.0~beta.1-4_amd64.deb
 ```
 
 ## Install on Fedora 44
@@ -96,7 +96,7 @@ git clone https://github.com/Yuna404/LinRgb.git
 cd LinRgb
 spectool -g -R packaging/fedora/linrgb.spec
 rpmbuild -bb packaging/fedora/linrgb.spec
-sudo dnf install "$HOME"/rpmbuild/RPMS/x86_64/linrgb-1.0.0~beta.1-3.fc44.x86_64.rpm
+sudo dnf install "$HOME"/rpmbuild/RPMS/x86_64/linrgb-1.0.0~beta.1-4.fc44.x86_64.rpm
 ```
 
 Build as your normal user on both distributions. Both packages include the launcher, targeted USB and I²C udev rules, and a configuration that loads `i2c-dev` at boot. Reboot after the first installation, then launch `linrgb` without `sudo`.

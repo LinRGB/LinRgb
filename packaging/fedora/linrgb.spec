@@ -1,8 +1,8 @@
-%global commit 8811a5d2564d52df75767ea11bd6e3e831923e63
+%global commit 7cb4af8352d93096925db2fc30b4747dca78c8a3
 
 Name:           linrgb
 Version:        1.0.0~beta.1
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Native RGB lighting control for Linux
 # Upstream has not declared a license; this spec is for local builds.
 License:        LicenseRef-NotDeclared
@@ -17,7 +17,7 @@ BuildRequires:  pkgconfig(gtk4)
 LinRgb controls supported USB HID and I2C lighting controllers through a GTK4 desktop interface.
 
 %prep
-printf 'f272f27e0067f37a973fed9837e776c3aa9183749374a7843f1b36490389fede  %%s\n' '%{SOURCE0}' | sha256sum --check
+printf 'bff34a7f10209fca458d8b065a3c1f7c781ca305e140d532c7cde39efa9c4689  %%s\n' '%{SOURCE0}' | sha256sum --check
 %autosetup -n LinRgb-%{commit}
 
 %build
@@ -43,6 +43,9 @@ printf 'i2c-dev\n' > %{buildroot}%{_prefix}/lib/modules-load.d/linrgb.conf
 %{_prefix}/lib/modules-load.d/linrgb.conf
 
 %changelog
+* Thu Nov 19 2026 LinRgb maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.1-4
+- Probe ENE memory before selecting RGB registers.
+
 * Wed Nov 18 2026 LinRgb maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.1-3
 - Fix repeated Corsair direct RGB updates.
 
