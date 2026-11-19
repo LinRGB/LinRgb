@@ -36,7 +36,7 @@ Merge these changes into your existing `flake.nix`. Keep your existing `nixpkgs`
     nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
       modules = [
         ./configuration.nix
-        linrgb.nixosModules.default
+        inputs.linrgb.nixosModules.default
       ];
     };
   };
