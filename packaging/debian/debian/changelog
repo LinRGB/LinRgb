@@ -1,3 +1,9 @@
+linrgb (1.0.0~beta.3-1) unstable; urgency=medium
+
+  * Restore the native tray context menu.
+
+ -- LinRGB maintainers <Yuna404@users.noreply.github.com>  Thu, 19 Nov 2026 17:05:00 +0000
+
 linrgb (1.0.0~beta.2-1) unstable; urgency=medium
 
   * Public testing build with verified hardware sessions and passive diagnostics.

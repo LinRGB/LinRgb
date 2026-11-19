@@ -1,7 +1,7 @@
-%global upstream_version 1.0.0-beta.2
+%global upstream_version 1.0.0-beta.3
 
 Name:           linrgb
-Version:        1.0.0~beta.2
+Version:        1.0.0~beta.3
 Release:        1%{?dist}
 Summary:        Native RGB lighting control for Linux
 # Upstream has not declared a license; this spec is for local builds.
@@ -18,7 +18,7 @@ BuildRequires:  pkgconfig(libudev)
 LinRgb controls supported USB HID and I2C lighting controllers through a GTK4 desktop interface.
 
 %prep
-printf '62cb37880cc77087c17f2d774c2645981cf5bae5ecd8f054e1305f4e8906161c  %%s\n' '%{SOURCE0}' | sha256sum --check
+printf 'e685c9db958fa957262b7ce2504a42df673b879bd7d4ebcd167db001c034d01a  %%s\n' '%{SOURCE0}' | sha256sum --check
 %autosetup -n linrgb-%{upstream_version}
 
 %build
@@ -46,6 +46,9 @@ printf 'i2c-dev\n' > %{buildroot}%{_prefix}/lib/modules-load.d/linrgb.conf
 %doc notices/*
 
 %changelog
+* Thu Nov 19 2026 LinRGB maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.3-1
+- Restore the native tray context menu.
+
 * Thu Nov 19 2026 LinRGB maintainers <Yuna404@users.noreply.github.com> - 1.0.0~beta.2-1
 - Beta 2: passive inventory and verified hardware sessions.
 
