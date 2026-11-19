@@ -42,7 +42,9 @@ fn main() -> glib::ExitCode {
         .application_id("io.github.linrgb.LinRgb")
         .build();
     app.set_accels_for_action("win.quit", &["<Primary>q"]);
-    app.connect_activate(|app| {
+    let restart = Rc::new(Cell::new(false));
+    let restart_request = restart.clone();
+    app.connect_activate(move |app| {
         if let Some(window) = app.windows().into_iter().find(|window| window.is::<gtk::ApplicationWindow>()) {
             window.present();
             return;
@@ -59,7 +61,8 @@ fn main() -> glib::ExitCode {
         appearance::install(&window, &header);
         let traffic = gtk::Box::new(gtk::Orientation::Horizontal, 11);
         traffic.set_valign(gtk::Align::Center);
-        let tray_available = tray::install(&window).is_ok();
+        let tray = tray::install(&window,restart_request.clone()).ok();
+        let tray_available = tray.is_some();
         for (symbol, class, tooltip) in [
             ("×", "close", if tray_available {
                 tr("Close to the system tray", "Fermer dans la zone de notification")
@@ -211,7 +214,7 @@ fn main() -> glib::ExitCode {
         let update = update_mode.clone();
         mode.connect_selected_notify(move |_| update());
         alternate.connect_toggled(move |_| update_mode());
-        profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &saturation);
+        let profiles = profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &saturation);
         let job = Rc::new(RefCell::new(
             None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>, Vec<drivers::Target>)>,
         ));
@@ -334,6 +337,7 @@ fn main() -> glib::ExitCode {
         };
         let apply_settings = submit.clone();
         apply.connect_clicked(move |_| apply_settings(false));
+        if let Some(menu) = tray { menu.bind(&profiles,&apply); }
         reset.connect_clicked(move |_| submit(true));
         let scroll = gtk::ScrolledWindow::builder()
             .child(&content)
@@ -343,7 +347,15 @@ fn main() -> glib::ExitCode {
         window.set_child(Some(&layout));
         window.present();
     });
-    app.run()
+    let code = app.run();
+    drop(app);
+    if restart.get() {
+        use std::os::unix::process::CommandExt;
+        let error = std::process::Command::new("/proc/self/exe").exec();
+        eprintln!("Could not relaunch LinRGB: {error}");
+        return glib::ExitCode::FAILURE;
+    }
+    code
 }
 
 fn label(text: &str, class: &str) -> gtk::Label {

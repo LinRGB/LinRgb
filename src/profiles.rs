@@ -72,7 +72,7 @@ pub fn install(
     period: &gtk::SpinButton,
     alternate: &gtk::CheckButton,
     saturation: &gtk::SpinButton,
-) {
+) -> gtk::ListBox {
     let path = config_dir().join("profiles.json");
     let loaded = match fs::read(&path) {
         Ok(data) => {
@@ -127,7 +127,7 @@ pub fn install(
                 "{}: {error}",
                 tr("Could not read profiles", "Impossible de lire les profils")
             ));
-            return;
+            return choices;
         }
     };
     let manage = {
@@ -194,6 +194,7 @@ pub fn install(
         alternate.clone(),
         saturation.clone(),
     );
+    let list = choices.clone();
     save.connect_clicked(move |_| {
         let name = name.text();
         let name = name.trim();
@@ -219,9 +220,10 @@ pub fn install(
         choices.select_row(Some(&row));
         status.set_text(tr("Profile saved.", "Profil enregistré."));
     });
+    list
 }
 
-fn row_label(row: &gtk::ListBoxRow) -> Option<gtk::Label> {
+pub fn row_label(row: &gtk::ListBoxRow) -> Option<gtk::Label> {
     row.child()?.first_child()?.downcast().ok()
 }
 
