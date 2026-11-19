@@ -1,4 +1,4 @@
-//! B550-A Pro SL candidates. A family signature alone must never produce a writer.
+//! B550-A Corsair DDR4 candidates. A family signature alone must never produce a writer.
 use super::{Capabilities, Result, Sink, Ticket};
 use crate::board;
 use i2cdev::{core::I2CDevice, linux::LinuxI2CDevice};
@@ -139,15 +139,25 @@ fn bind<'a>(
     }
     check()?;
     let checksum = dev.read(0x42)?;
-    if info[..2] != [0x1c, 0x1b]
-        || !matches!(info[2..4], [0 | 1, 3])
-        || info[28] != 4
-        || crc(&info) != checksum
-    {
+    if info[..2] != [0x1c, 0x1b] || crc(&info) != checksum {
         return Err("Unrecognized Corsair module information".into());
     }
+    let model = match u16::from_le_bytes([info[2], info[3]]) {
+        0x0300 | 0x0301 => "Vengeance RGB Pro SL",
+        0x0100 | 0x0101 => "Vengeance RGB Pro",
+        0x0400 | 0x0401 => {
+            return Err("Vengeance RS identified; six-position block layout not validated".into());
+        }
+        _ => return Err("Unsupported Corsair product ID".into()),
+    };
+    if info[28] != 4 {
+        return Err("Unsupported direct RGB protocol (requires version 4)".into());
+    }
     Ok((
-        Capabilities::Corsair { protocol: info[28] },
+        Capabilities::Corsair {
+            model,
+            protocol: info[28],
+        },
         Box::new(move |rgb| dev.direct(&frame(rgb))),
     ))
 }

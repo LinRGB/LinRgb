@@ -69,8 +69,8 @@ fn unrelated_signatures_never_reach_selectors() {
     reject([Read(0x43, 0x1b), Read(0x44, 2)].into());
 }
 #[test]
-fn family_match_does_not_authorize_dominator_pro_rs_or_unknown_modules() {
-    for pid in [0x0101, 0x0200, 0x0201, 0x0401, 0x0701, 0xffff] {
+fn family_match_does_not_authorize_dominator_rs_or_unknown_modules() {
+    for pid in [0x0400, 0x0200, 0x0201, 0x0401, 0x0701, 0xffff] {
         let i = info(pid);
         reject(transcript(i, crc(&i)));
     }
@@ -123,12 +123,39 @@ fn both_pro_sl_ids_accept_repeated_direct_frames_until_first_failure() {
         let mut s = Session::connect(&stop, &t, || bind(Mock(&mut q), &stop, &t)).unwrap();
         assert!(matches!(
             s.capabilities(),
-            Capabilities::Corsair { protocol: 4 }
+            Capabilities::Corsair {
+                protocol: 4,
+                model: "Vengeance RGB Pro SL"
+            }
         ));
         assert!(s.set_rgb([1, 2, 3]).unwrap());
         assert!(s.set_rgb([3, 2, 1]).unwrap());
         assert!(s.set_rgb([1; 3]).is_err());
         assert!(s.set_rgb([2; 3]).is_err());
+        drop(s);
+        assert!(q.is_empty());
+    }
+}
+#[test]
+fn pro_ddr4_ten_positions_require_the_direct_protocol() {
+    for pid in [0x0100, 0x0101] {
+        let mut i = info(pid);
+        i[28] = 3;
+        reject(transcript(i, crc(&i)));
+        i[28] = 4;
+        let mut q = transcript(i, crc(&i));
+        q.push_back(Step::Frame(expected([13, 29, 101])));
+        let stop = AtomicBool::new(false);
+        let t = Generation::default().ticket();
+        let mut s = Session::connect(&stop, &t, || bind(Mock(&mut q), &stop, &t)).unwrap();
+        assert!(matches!(
+            s.capabilities(),
+            Capabilities::Corsair {
+                model: "Vengeance RGB Pro",
+                protocol: 4
+            }
+        ));
+        assert!(s.set_rgb([13, 29, 101]).unwrap());
         drop(s);
         assert!(q.is_empty());
     }

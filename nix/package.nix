@@ -14,6 +14,7 @@ rustPlatform.buildRustPackage {
     fileset = lib.fileset.unions [
       ../Cargo.toml
       ../Cargo.lock
+      ../notices
       ../src
       ../packaging
       ../data/openrgb-pci.tsv
@@ -29,6 +30,7 @@ rustPlatform.buildRustPackage {
   postInstall = ''
     install -Dm644 packaging/io.github.linrgb.LinRgb.desktop $out/share/applications/io.github.linrgb.LinRgb.desktop
     install -Dm644 packaging/io.github.linrgb.LinRgb.svg $out/share/icons/hicolor/scalable/apps/io.github.linrgb.LinRgb.svg
+    install -Dm644 -t $out/share/doc/linrgb notices/*
     install -Dm644 packaging/70-linrgb.rules $out/lib/udev/rules.d/70-linrgb.rules
   '';
   meta = {

@@ -221,7 +221,7 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
                         for slot in [Slot::A, Slot::B] {
                             slot_row(
                                 Target::Corsair(adapter.clone(), slot),
-                                "Corsair Pro SL",
+                                "Corsair DDR4",
                                 slot as u16,
                             );
                         }

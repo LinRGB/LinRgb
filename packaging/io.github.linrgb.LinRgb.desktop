@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=LinRgb
+Name=LinRGB
 Comment=Control RGB lighting on Linux
 Comment[fr]=Contrôler l’éclairage RGB sous Linux
 Exec=linrgb

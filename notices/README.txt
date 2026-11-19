@@ -1,0 +1,3 @@
+LinRGB has not declared a general license for its own code or artwork. The owner's distribution of this beta does not license unrelated third-party works.
+
+The PCI identification catalogue and generated ENE device matches are based on factual device registrations in OpenRGB, https://github.com/CalcProgrammer1/OpenRGB/tree/5bcfa9ae01536d2dd45b0c6e5b15677513f7a6d5 (OpenRGB contributors; GPL-2.0-or-later sources). See OpenRGB-COPYING and the provenance header in data/openrgb-pci.tsv. The import and rule-generation scripts are in the LinRGB Git repository. LinRGB does not link to or require the OpenRGB application. Product names and trademarks belong to their owners. Rust dependencies retain their upstream licenses; versions are pinned in Cargo.lock.

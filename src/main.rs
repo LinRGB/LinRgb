@@ -29,6 +29,10 @@ use std::{
 };
 
 fn main() -> glib::ExitCode {
+    if std::env::args_os().skip(1).eq(["--version"]) {
+        println!("LinRGB {}", env!("CARGO_PKG_VERSION"));
+        return glib::ExitCode::SUCCESS;
+    }
     if std::env::args_os().skip(1).eq(["--diagnostics"]) {
         let inventory = discovery::scan(std::path::Path::new("/sys"), std::path::Path::new("/dev"));
         println!("{}", inventory.diagnostics());
@@ -45,7 +49,7 @@ fn main() -> glib::ExitCode {
         }
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("LinRgb")
+            .title("LinRGB")
             .default_width(1080)
             .default_height(660)
             .build();
@@ -97,7 +101,7 @@ fn main() -> glib::ExitCode {
         avatar.set_valign(gtk::Align::Center);
         identity.append(&avatar);
         let titles = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        titles.append(&label("LinRgb", "title-2"));
+        titles.append(&label("LinRGB", "title-2"));
         titles.append(&label(tr("Lighting Studio", "Atelier lumière"), "dim-label"));
         identity.append(&titles);
         sidebar.append(&identity);

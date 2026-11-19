@@ -78,6 +78,7 @@ pub enum Capabilities {
     }, // read/write hidraw features
     Aura(aura::Layout),
     Corsair {
+        model: &'static str,
         protocol: u8,
     },
     LegacyDirect, // protocol-specific details not exposed as verified capabilities
@@ -99,8 +100,8 @@ impl Capabilities {
                 min_interval,
             } => Some(format!("{lamps} LED · min {} µs", min_interval.as_micros())),
             Self::Aura(layout) => Some(layout.description().into()),
-            Self::Corsair { protocol } => Some(format!(
-                "Corsair protocol {protocol} · profile: 10 positions"
+            Self::Corsair { model, protocol } => Some(format!(
+                "{model} · protocol {protocol} · profile: 10 positions"
             )),
             Self::LegacyDirect => None,
         }
