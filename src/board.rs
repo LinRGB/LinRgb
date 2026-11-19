@@ -63,8 +63,12 @@ pub fn open_argb(instance: &Path) -> BoardResult<impl FnMut([u8; 3]) -> BoardRes
     let mut hid = crate::hid::open(instance, hid_id, false)?;
     let mut gen1 = [0; 65];
     gen1[..5].copy_from_slice(&[0xec, 0x52, 0x53, 0, 1]);
-    send(&mut hid, &gen1)?;
+    let mut initialized = false;
     Ok(move |rgb| {
+        if !initialized {
+            send(&mut hid, &gen1)?;
+            initialized = true;
+        }
         for report in b550_argb_reports(rgb) {
             send(&mut hid, &report)?;
         }

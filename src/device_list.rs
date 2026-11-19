@@ -1,6 +1,6 @@
 use crate::{
     discovery::{self, Access, Device},
-    effects::Target,
+    drivers::{Generation, Target, Ticket},
     i18n::tr,
 };
 use gtk::{gio, glib, prelude::*};
@@ -15,19 +15,21 @@ use std::{
 // GTK-thread only. An old scan may finish, but must never publish after invalidation.
 #[derive(Default)]
 struct Epoch {
-    generation: Cell<u64>,
+    generation: Generation,
     sleeping: Cell<bool>,
     ready: Cell<bool>,
 }
 impl Epoch {
     fn invalidate(&self) {
         self.ready.set(false);
-        self.generation.set(self.generation.get().wrapping_add(1));
+        self.generation.invalidate();
     }
     fn accept(&self, generation: u64) -> bool {
-        !self.sleeping.get() && self.generation.get() == generation
+        !self.sleeping.get() && self.generation.current() == generation
     }
 }
+
+type Selection = (Ticket, Vec<(String, Target)>);
 
 pub fn install<F: Fn(&[Device]) + 'static>(
     list: &gtk::Box,
@@ -36,7 +38,7 @@ pub fn install<F: Fn(&[Device]) + 'static>(
     refresh: &gtk::Button,
     all: &gtk::Button,
     reconcile: F,
-) -> impl Fn() -> Option<Vec<(String, Target)>> + Clone + use<F> {
+) -> impl Fn() -> Option<Selection> + Clone + use<F> {
     let reconcile = Rc::new(reconcile);
     let rows = Rc::new(RefCell::new(Vec::<(Device, gtk::CheckButton)>::new()));
     let entries = rows.clone();
@@ -80,7 +82,7 @@ pub fn install<F: Fn(&[Device]) + 'static>(
                 if gate.sleeping.get() || list.upgrade().is_none() {
                     break;
                 }
-                let generation = gate.generation.get();
+                let generation = gate.generation.current();
                 let scan =
                     gio::spawn_blocking(|| discovery::scan(Path::new("/sys"), Path::new("/dev")))
                         .await;
@@ -200,11 +202,14 @@ pub fn install<F: Fn(&[Device]) + 'static>(
     update();
     move || {
         epoch.ready.get().then(|| {
-            rows.borrow()
-                .iter()
-                .filter(|(_, c)| c.is_active() && c.is_sensitive())
-                .map(|(d, _)| (d.name.clone(), d.target.clone()))
-                .collect()
+            (
+                epoch.generation.ticket(),
+                rows.borrow()
+                    .iter()
+                    .filter(|(_, c)| c.is_active() && c.is_sensitive())
+                    .map(|(d, _)| (d.name.clone(), d.target.clone()))
+                    .collect(),
+            )
         })
     }
 }
@@ -260,16 +265,16 @@ fn ignores_unrelated_device_events() {
 #[test]
 fn invalidated_scan_cannot_restore_removed_or_sleeping_endpoints() {
     let g = Epoch::default();
-    let first = g.generation.get();
+    let first = g.generation.current();
     g.invalidate();
     assert!(!g.accept(first));
-    let awake = g.generation.get();
+    let awake = g.generation.current();
     g.sleeping.set(true);
     g.invalidate();
     assert!(!g.accept(awake));
-    assert!(!g.accept(g.generation.get()));
+    assert!(!g.accept(g.generation.current()));
     g.sleeping.set(false);
     g.invalidate();
     assert!(!g.accept(awake));
-    assert!(g.accept(g.generation.get()));
+    assert!(g.accept(g.generation.current()));
 }

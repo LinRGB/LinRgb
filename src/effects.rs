@@ -1,49 +1,9 @@
+use crate::drivers::{Target, Ticket};
 use std::{
-    error::Error,
-    path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum Target {
-    EneGpu(PathBuf),
-    Board(PathBuf),
-    BoardArgb(PathBuf),
-    Ram(u16),
-    Corsair(u16),
-    Kernel(PathBuf, u64),
-    LampArray(PathBuf),
-}
-
-type Writer<'a> = Box<dyn FnMut([u8; 3]) -> Result<(), Box<dyn Error>> + 'a>;
-
-impl Target {
-    fn open(self, stop: &AtomicBool) -> Result<Writer<'_>, Box<dyn Error>> {
-        match self {
-            Self::EneGpu(card) => {
-                let mut device = crate::astral::open(&card)?;
-                Ok(Box::new(move |rgb| device.set(rgb)))
-            }
-            Self::Corsair(address) => Ok(Box::new(crate::corsair::open(address)?)),
-            Self::Ram(address) => {
-                let mut device = crate::board::open_ram(address)?;
-                Ok(Box::new(move |rgb| device.set(rgb)))
-            }
-            Self::Board(path) => Ok(Box::new(crate::board::open(&path)?)),
-            Self::BoardArgb(path) => Ok(Box::new(crate::board::open_argb(&path)?)),
-            Self::Kernel(path, inode) => {
-                let mut write = crate::kernel_led::open(&path, inode)?;
-                Ok(Box::new(move |rgb| Ok(write(rgb)?)))
-            }
-            Self::LampArray(path) => {
-                let mut write = crate::lamp_array::open(&path, stop)?;
-                Ok(Box::new(move |rgb| Ok(write(rgb)?)))
-            }
-        }
-    }
-}
 
 #[derive(Clone, Copy)]
 pub enum Effect {
@@ -152,6 +112,7 @@ pub fn run(
     targets: Targets,
     effect: Effect,
     stop: &AtomicBool,
+    ticket: &Ticket,
     report: &(impl Fn(String, String) + Sync),
 ) {
     let start = Instant::now();
@@ -161,7 +122,7 @@ pub fn run(
             .iter()
             .any(|(_, target)| matches!(target, Target::Kernel(..)))
     {
-        return run_group(targets, effect, stop, start, FRAME_INTERVAL, report);
+        return run_group(targets, effect, stop, ticket, start, FRAME_INTERVAL, report);
     }
     let mut groups: [Targets; 4] = Default::default();
     for item in targets {
@@ -184,11 +145,28 @@ pub fn run(
     thread::scope(|scope| {
         let workers: Vec<_> = groups
             .map(|(group, targets)| {
-                scope
-                    .spawn(move || run_group(targets, effect, stop, start, interval(group), report))
+                scope.spawn(move || {
+                    run_group(
+                        targets,
+                        effect,
+                        stop,
+                        ticket,
+                        start,
+                        interval(group),
+                        report,
+                    )
+                })
             })
             .collect();
-        run_group(primary, effect, stop, start, interval(first), report);
+        run_group(
+            primary,
+            effect,
+            stop,
+            ticket,
+            start,
+            interval(first),
+            report,
+        );
         for worker in workers {
             if worker.join().is_err() {
                 report(
@@ -204,6 +182,7 @@ fn run_group(
     targets: Targets,
     effect: Effect,
     stop: &AtomicBool,
+    ticket: &Ticket,
     start: Instant,
     interval: Duration,
     report: &impl Fn(String, String),
@@ -213,12 +192,9 @@ fn run_group(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        match target.open(stop).and_then(|mut writer| {
-            if stop.load(Ordering::Acquire) {
-                return Err("RGB operation cancelled".into());
-            }
+        match target.connect(stop, ticket).and_then(|mut writer| {
             let color = effect.sample(start.elapsed().as_secs_f64());
-            writer(color)?;
+            writer.set_rgb(color)?;
             Ok((writer, color))
         }) {
             Ok((writer, color)) => {
@@ -227,7 +203,11 @@ fn run_group(
                 } else {
                     crate::i18n::tr("color sent", "couleur envoyée")
                 };
-                report(name.clone(), state.into());
+                let message = writer.capabilities().description().map_or_else(
+                    || state.to_owned(),
+                    |details| format!("{state} · {details}"),
+                );
+                report(name.clone(), message);
                 active.push((name, writer, color));
             }
             Err(error) => report(
@@ -250,18 +230,23 @@ fn run_group(
                 if rgb == *previous || stop.load(Ordering::Relaxed) {
                     return true;
                 }
-                if let Err(error) = writer(rgb) {
-                    report(
-                        name.clone(),
-                        format!(
-                            "{}: {error}",
-                            crate::i18n::tr("effect interrupted", "effet interrompu")
-                        ),
-                    );
-                    false
-                } else {
-                    *previous = rgb;
-                    true
+                match writer.set_rgb(rgb) {
+                    Ok(sent) => {
+                        if sent {
+                            *previous = rgb;
+                        }
+                        true
+                    }
+                    Err(error) => {
+                        report(
+                            name.clone(),
+                            format!(
+                                "{}: {error}",
+                                crate::i18n::tr("effect interrupted", "effet interrompu")
+                            ),
+                        );
+                        false
+                    }
                 }
             });
         }
@@ -277,10 +262,15 @@ mod tests {
         super::run(
             vec![(
                 "Missing LED".into(),
-                Target::Kernel("/dev/null/linrgb-led".into(), 0),
+                Target::Kernel(
+                    "/dev/null/linrgb-led".into(),
+                    0,
+                    crate::drivers::kernel_led::Layout::parse("red green blue", 255).unwrap(),
+                ),
             )],
             Effect::ColorCycle(1.0, 6.0),
             &std::sync::atomic::AtomicBool::new(false),
+            &crate::drivers::Generation::default().ticket(),
             &|name, status| messages.lock().unwrap().push((name, status)),
         );
         let messages = messages.into_inner().unwrap();

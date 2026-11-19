@@ -57,6 +57,7 @@ pub struct Ene {
     bus: LinuxI2CDevice,
     base: u16,
     leds: u8,
+    direct: bool,
 }
 
 pub fn open_ene(
@@ -104,16 +105,25 @@ pub fn open_ene(
         return Err("Unexpected LED count. No color applied.".into());
     }
 
-    // ENE Aura direct mode. Do not issue the persistent save command.
-    for register in [0x8020u16, 0x80a0] {
-        bus.smbus_write_word_data(0x00, register.swap_bytes())?;
-        bus.smbus_write_byte_data(0x01, 1)?;
-    }
-    Ok(Ene { bus, base, leds })
+    Ok(Ene {
+        bus,
+        base,
+        leds,
+        direct: false,
+    })
 }
 
 impl Ene {
     pub fn set(&mut self, rgb: [u8; 3]) -> Result<(), Box<dyn Error>> {
+        if !self.direct {
+            // ENE Aura direct mode. Do not issue the persistent save command.
+            for register in [0x8020u16, 0x80a0] {
+                self.bus
+                    .smbus_write_word_data(0x00, register.swap_bytes())?;
+                self.bus.smbus_write_byte_data(0x01, 1)?;
+            }
+            self.direct = true;
+        }
         for (index, block) in color_bytes(rgb, usize::from(self.leds))
             .chunks(31)
             .enumerate()

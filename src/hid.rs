@@ -66,6 +66,37 @@ pub fn open(instance: &Path, id: &str, read: bool) -> io::Result<fs::File> {
     Ok(file)
 }
 
+/// HIDIOCGRDESCSIZE/HIDIOCGRDESC: fetch the kernel's cached descriptor on this fd.
+/// These ioctls do not program the peripheral. ABI constants below are for x86_64.
+pub fn verify_descriptor(file: &fs::File, expected: &[u8]) -> io::Result<()> {
+    #[repr(C)]
+    struct Report {
+        size: u32,
+        bytes: [u8; 4096],
+    }
+    const _: () = assert!(std::mem::size_of::<Report>() == 4100);
+    let mut size = 0i32;
+    if unsafe { libc::ioctl(file.as_raw_fd(), 0x80044801, &mut size) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if !(1..=4096).contains(&size) || size as usize != expected.len() {
+        return Err(io::Error::other("Unexpected HID descriptor size"));
+    }
+    let mut report = Report {
+        size: size as u32,
+        bytes: [0; 4096],
+    };
+    if unsafe { libc::ioctl(file.as_raw_fd(), 0x90044802, &mut report) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if report.size != size as u32 || &report.bytes[..size as usize] != expected {
+        return Err(io::Error::other(
+            "Unsupported descriptor on opened HID interface",
+        ));
+    }
+    Ok(())
+}
+
 #[repr(C)]
 #[derive(Default)]
 struct HidrawInfo {

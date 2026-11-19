@@ -7,12 +7,11 @@ mod color_wheel;
 mod corsair;
 mod device_list;
 mod discovery;
+mod drivers;
 mod effects;
 mod hardware;
 mod hid;
 mod i18n;
-mod kernel_led;
-mod lamp_array;
 mod monitor;
 mod preview;
 mod profiles;
@@ -211,7 +210,7 @@ fn main() -> glib::ExitCode {
         alternate.connect_toggled(move |_| update_mode());
         profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &saturation);
         let job = Rc::new(RefCell::new(
-            None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>, Vec<effects::Target>)>,
+            None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>, Vec<drivers::Target>)>,
         ));
         let running = job.clone();
         let quitting = Rc::new(Cell::new(false));
@@ -273,7 +272,7 @@ fn main() -> glib::ExitCode {
                 status.set_text(tr("Enter valid HEX colors for this effect.", "Saisissez des couleurs HEX valides pour cet effet."));
                 return;
             };
-            let Some(targets) = selected_targets() else { status.set_text(tr("Waiting for a fresh device inventory.", "En attente d’un inventaire à jour.")); return; };
+            let Some((ticket,targets)) = selected_targets() else { status.set_text(tr("Waiting for a fresh device inventory.", "En attente d’un inventaire à jour.")); return; };
             if targets.is_empty() {
                 status.set_text(tr("No devices selected.", "Aucun périphérique sélectionné."));
                 return;
@@ -291,7 +290,7 @@ fn main() -> glib::ExitCode {
                     let _ = previous.join();
                 }
                 if !flag.load(Ordering::Relaxed) {
-                    effects::run(targets, effect, &flag, &|name, state| { let _ = send.send((name, state)); });
+                    effects::run(targets, effect, &flag, &ticket,&|name, state| { let _ = send.send((name, state)); });
                 }
             });
             *job.borrow_mut() = Some((cancel.clone(), worker, endpoints));

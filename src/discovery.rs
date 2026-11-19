@@ -2,7 +2,12 @@
 #[cfg(test)]
 #[path = "discovery_tests.rs"]
 mod tests;
-use crate::{astral, board, effects::Target, hardware, i18n::tr, kernel_led, lamp_array};
+use crate::{
+    astral, board,
+    drivers::{Target, kernel_led, lamp_array},
+    hardware,
+    i18n::tr,
+};
 use std::{
     collections::BTreeSet,
     ffi::CString,
@@ -103,7 +108,7 @@ impl Inventory {
                 Target::Kernel(..) => ("linux-multicolor", "kernel-interface", None),
                 Target::LampArray(_) => ("hid-lamparray", "known-report-layout", None),
             };
-            serde_json::json!({"backend":backend, "match":matched, "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
+            serde_json::json!({"backend":backend, "match":matched, "required_interface": d.target.interface().description(), "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
         }).collect();
         let graphics: Vec<_> = self
             .pci_ids
@@ -270,7 +275,7 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
                 let Ok(meta) = path.metadata() else {
                     continue;
                 };
-                let (channels, max) = match kernel_led::channels(&path) {
+                let layout = match kernel_led::channels(&path) {
                     Ok(c) => c,
                     Err(e) => {
                         out.notes.push(format!(
@@ -285,11 +290,10 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
                     state = access(&path.join("brightness"), libc::W_OK);
                 }
                 let label = format!(
-                    "{} · Linux LED · {} (max {max})",
-                    path.file_name().unwrap_or_default().to_string_lossy(),
-                    channels.trim()
+                    "{} · Linux LED · {layout}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
                 );
-                out.add(Target::Kernel(path, meta.ino()), label, state);
+                out.add(Target::Kernel(path, meta.ino(), layout), label, state);
             }
         }
         Err(e) if e.kind() != io::ErrorKind::NotFound => out.notes.push(format!("LED: {e}")),
