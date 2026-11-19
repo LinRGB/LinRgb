@@ -1,4 +1,10 @@
-use std::{error::Error, fs, io::Write};
+use std::{
+    error::Error,
+    fs,
+    io::Write,
+    os::fd::AsRawFd,
+    path::{Path, PathBuf},
+};
 
 type BoardResult<T> = Result<T, Box<dyn Error>>;
 
@@ -24,9 +30,9 @@ pub fn check_board() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-const B550: &str = "ROG STRIX B550-A GAMING";
+pub const B550: &str = "ROG STRIX B550-A GAMING";
 
-fn fixed_zone(model: &str) -> Option<(&'static str, u8)> {
+pub fn fixed_zone(model: &str) -> Option<(&'static str, u8)> {
     match model {
         "ROG CROSSHAIR VIII HERO (WI-FI)" => Some(("HID_ID=0003:00000B05:000018F3", 8)),
         B550 => Some(("HID_ID=0003:00000B05:00001939", 2)),
@@ -67,23 +73,55 @@ pub fn open_argb() -> BoardResult<impl FnMut([u8; 3]) -> BoardResult<()>> {
     })
 }
 
-fn open_hid(hid_id: &str) -> BoardResult<fs::File> {
+pub fn hid_node(root: &Path, hid_id: &str) -> BoardResult<PathBuf> {
     let mut paths = Vec::new();
-    for entry in fs::read_dir("/sys/class/hidraw")? {
+    for entry in fs::read_dir(root)? {
         let entry = entry?;
-        if fs::read_to_string(entry.path().join("device/uevent"))?
-            .lines()
-            .any(|line| line == hid_id)
-        {
+        let details = match fs::read_to_string(entry.path().join("device/uevent")) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            result => result?,
+        };
+        if details.lines().any(|line| line == hid_id) {
             paths.push(entry.file_name());
         }
     }
     let [path] = paths.as_slice() else {
         return Err("Expected exactly one Aura USB controller.".into());
     };
-    Ok(fs::OpenOptions::new()
+    Ok(PathBuf::from(path))
+}
+
+fn open_hid(hid_id: &str) -> BoardResult<fs::File> {
+    let path = hid_node(Path::new("/sys/class/hidraw"), hid_id)?;
+    let file = fs::OpenOptions::new()
         .write(true)
-        .open(std::path::Path::new("/dev").join(path))?)
+        .open(Path::new("/dev").join(path))?;
+    // Linux HIDIOCGRAWINFO (_IOR('H', 3, struct hidraw_devinfo)), on our x86_64 target.
+    // Check the open fd, not just the recyclable /dev/hidrawN name.
+    let mut raw = HidrawInfo::default();
+    if unsafe { libc::ioctl(file.as_raw_fd(), 0x80084803, &mut raw) } < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if !matches_hid(raw, hid_id) {
+        return Err("Aura controller changed before opening.".into());
+    }
+    Ok(file)
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct HidrawInfo {
+    bus: u32,
+    vendor: u16,
+    product: u16,
+}
+const _: () = assert!(std::mem::size_of::<HidrawInfo>() == 8);
+
+fn matches_hid(raw: HidrawInfo, id: &str) -> bool {
+    format!(
+        "HID_ID={:04X}:{:08X}:{:08X}",
+        raw.bus, raw.vendor, raw.product
+    ) == id
 }
 
 fn send(hid: &mut fs::File, report: &[u8; 65]) -> BoardResult<()> {
@@ -95,12 +133,29 @@ fn send(hid: &mut fs::File, report: &[u8; 65]) -> BoardResult<()> {
 
 pub fn open_ram(address: u16) -> Result<crate::astral::Ene, Box<dyn Error>> {
     check_board()?;
+    if !matches!(address, 0x72 | 0x73) {
+        return Err("Unexpected ENE RAM address".into());
+    }
     crate::astral::open_ene(ram_bus()?, address, &[b"DIMM_LED-0103"], 0x8000, Some(5))
 }
 
 pub fn ram_bus() -> BoardResult<u32> {
+    ram_bus_at(Path::new("/sys/bus/pci/devices/0000:00:14.0"))
+}
+
+pub fn ram_bus_at(controller: &Path) -> BoardResult<u32> {
+    for (attr, id) in [
+        ("vendor", "0x1022"),
+        ("device", "0x790b"),
+        ("subsystem_vendor", "0x1043"),
+        ("subsystem_device", "0x87c0"),
+    ] {
+        if fs::read_to_string(controller.join(attr))?.trim() != id {
+            return Err("Unsupported RAM SMBus controller".into());
+        }
+    }
     let mut buses = Vec::new();
-    for entry in fs::read_dir("/sys/bus/pci/devices/0000:00:14.0")? {
+    for entry in fs::read_dir(controller)? {
         let entry = entry?;
         let name = entry.file_name();
         if let Some(number) = name
@@ -121,6 +176,17 @@ pub fn ram_bus() -> BoardResult<u32> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hid_fd_must_match_usb_bus_vendor_and_product() {
+        let raw = || super::HidrawInfo {
+            bus: 3,
+            vendor: 0x0b05,
+            product: 0x1939,
+        };
+        assert!(super::matches_hid(raw(), "HID_ID=0003:00000B05:00001939"));
+        assert!(!super::matches_hid(raw(), "HID_ID=0003:00000B05:000018F3"));
+    }
+
     #[test]
     fn board_report_targets_fixed_zone_only() {
         let report = super::report([1, 2, 3], 8);
