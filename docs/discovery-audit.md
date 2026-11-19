@@ -1,5 +1,7 @@
 # Inventaire matériel — audit du premier jalon
 
+Ce document décrit le premier jalon. Pour le comportement actuel (udev, LED, veille et réénumération HID), voir le [deuxième jalon](device-lifecycle.md).
+
 Base : `67ff099`. Charge visée : une application graphique locale, plusieurs transports, un effet actif. Travail isolé du prototype de tray. Aucun essai sur bus physique.
 
 | Priorité | Constat et impact | Décision et preuve attendue |
