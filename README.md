@@ -8,9 +8,9 @@
 
 **Why I built LinRgb:** I couldn't find a Linux RGB app that worked the way I wanted. I didn't have the programming experience to build it on my own, so I used AI to help make the tool I wanted for my own PC. If you'd rather not use software built this way, I understand. There's no pressure to use LinRgb.
 
-LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64-linux` is the primary platform for this beta. OpenRGB and SignalRGB are not required at runtime.
+LinRgb is a native Rust and GTK4 app for RGB lighting on Linux. NixOS on `x86_64-linux` is the primary platform. OpenRGB and SignalRGB are not required at runtime.
 
-## Try the beta without installing it
+## Try LinRgb without installing it
 
 With Nix Flakes enabled, run:
 
@@ -20,32 +20,53 @@ nix run github:LinRGB/LinRgb/main
 
 This downloads or builds LinRgb from `main` and opens it. It does not add a desktop launcher to your system profile or install udev rules. Close other RGB applications and their background servers before applying any lighting settings. Do not run the GUI as root.
 
-## Install with Flakes
+## Install on NixOS (recommended)
 
-Add LinRgb to your flake inputs:
+This guide assumes you already manage NixOS with a flake. If the `nix` command reports that flakes are disabled, add `nix.settings.experimental-features = [ "nix-command" "flakes" ];` to your current NixOS configuration and rebuild it using your existing setup first.
+
+### 1. Add LinRgb to your flake
+
+Merge these changes into your existing `flake.nix`. Keep your existing `nixpkgs` input and host modules. Replace `my-host` with your entry under `nixosConfigurations`. Keep LinRgb's own pinned `nixpkgs`; don't make it follow your system input.
 
 ```nix
-inputs.linrgb = {
-  url = "github:LinRGB/LinRgb/main";
-};
+{
+  inputs.linrgb.url = "github:LinRGB/LinRgb/main";
+
+  outputs = { nixpkgs, linrgb, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      modules = [
+        ./configuration.nix
+        linrgb.nixosModules.default
+      ];
+    };
+  };
+}
 ```
 
-The lock file pins the selected revision of `main`. To get newer fixes, run `nix flake update linrgb`, rebuild, and quit and reopen LinRgb so the old process does not stay in the tray.
+If your `outputs` already binds `inputs` (for example, `inputs@{ nixpkgs, ... }`), use `inputs.linrgb.nixosModules.default` in the `modules` list instead.
 
-Keep LinRgb's pinned `nixpkgs` input instead of setting `inputs.linrgb.inputs.nixpkgs.follows = "nixpkgs"`. The beta was tested with its own pinned dependencies.
+### 2. Enable LinRgb on your host
 
-### NixOS (recommended)
-
-In your NixOS configuration, with `inputs` in scope, add the module to your existing `imports` list and enable it:
+Add this inside the existing attribute set in `configuration.nix` (or the equivalent host module). No additional `imports` entry is needed.
 
 ```nix
-imports = [ inputs.linrgb.nixosModules.default ];
 programs.linrgb.enable = true;
 ```
 
-The module installs LinRgb, loads `i2c-dev`, and registers the bundled udev rules. The rules grant the active local session access to the supported USB controllers and specific Astral GPU and Crosshair SMBus adapters. An I²C permission applies to the entire matched adapter, not just its RGB controller. No blanket I²C access is granted.
+### 3. Rebuild and launch
 
-Rebuild NixOS, then launch **LinRgb** from the application menu or run `linrgb`. You do not need to add the package or its rules separately. Reconnect USB devices or reboot if device access has not refreshed.
+From the directory containing `flake.nix`, run:
+
+```bash
+nix flake lock
+sudo nixos-rebuild switch --flake .#my-host
+```
+
+Launch **LinRgb** from the application menu or run `linrgb` without `sudo`. Quit any other RGB apps and their background servers before applying lighting. The module installs the launcher and package, loads `i2c-dev`, and registers targeted udev rules for the active local session. No manual rules are needed. I²C permissions apply to each matched adapter as a whole, not just to its RGB controller. If access has not refreshed, reconnect the USB device or reboot.
+
+### Update LinRgb
+
+From the same directory, run `nix flake update linrgb` and repeat the rebuild command. `flake.lock` pins the selected revision of `main`. Quit LinRgb with `Ctrl+Q` and reopen it so you don't keep running the previous version in the tray.
 
 ### Package only (Home Manager or custom setup)
 
@@ -55,7 +76,7 @@ In a module with `inputs` and `pkgs` in scope, add this package to `home.package
 inputs.linrgb.packages.${pkgs.stdenv.hostPlatform.system}.default
 ```
 
-Package-only installs and `nix run` do not activate system udev rules. On NixOS, you can register the package separately in `services.udev.packages`. The `v1.0.0-beta.1` tag predates the module and bundles USB rules only. Do not run LinRgb as root.
+Package-only installs and `nix run` do not activate system udev rules. Use the NixOS module for automatic device access. If you manage permissions yourself on NixOS, register the package in `services.udev.packages` and load `i2c-dev` for supported SMBus devices. Do not run LinRgb as root.
 
 ## Install on Arch Linux
 
@@ -131,7 +152,7 @@ LinRgb creates `$XDG_CONFIG_HOME/LinRGB/themes/` on first launch, using `~/.conf
 ## Hardware support and limits
 
 - **Tested with solid color:** ASUS ROG Astral GeForce RTX 5080 OC, ASUS ROG Crosshair VIII Hero (Wi-Fi) fixed Aura zone, and two ENE RGB memory modules at SMBus addresses `0x72` and `0x73`. The Crosshair’s addressable headers are not supported. Other ASUS NVIDIA cards in the ENE catalogue are offered as experimental targets when all four PCI IDs match. LinRgb only applies lighting if the controller reports a recognized firmware and a supported LED count. This does not add direct support for AMD GPUs or other controller families.
-- **Experimental:** ASUS ROG STRIX B550-A GAMING fixed RGB outputs and `Addressable RGB Header 1` (100 LED positions). Select the header to control devices synced to it, such as an XFX RX 9070 XT Mercury connected for motherboard sync. No direct XFX GPU driver is included.
+- **Experimental:** ASUS ROG STRIX B550-A GAMING fixed RGB outputs and `Addressable RGB Header 1` (100 LED positions). Select the header to control devices synced to it, such as an XFX RX 9070 XT Mercury connected for motherboard sync. No direct XFX GPU driver is included. Corsair Vengeance RGB Pro SL DDR4 lighting is experimental on the B550-A setup at SMBus addresses `0x5A` and `0x5B`.
 - **Fractal Adjust Pro Hub (`36BC:1001`):** selectable in Windows Dynamic Lighting (WDL) mode when it exposes the supported HID LampArray report layout. LinRgb sends one color to all lamps on the hub. Other LampArray layouts are detected but not controlled. In the hub’s standalone mode, it will not appear as a WDL target.
 - **Linux multicolor LEDs:** LinRgb can use RGB devices exposed by the kernel under `/sys/class/leds`, subject to driver support and permissions. The white channel stays off on RGBW devices. See the [Linux multicolor LED documentation](https://docs.kernel.org/leds/leds-class-multicolor.html).
 - **PCI inventory:** an identified GPU is not necessarily controllable. The [OpenRGB-derived catalog](data/openrgb-pci.tsv) matches the four PCI IDs and lists candidate controller families; it never authorizes RGB writes by itself.
