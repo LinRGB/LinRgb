@@ -42,15 +42,15 @@ The `+` lines below are additions to your **existing** flake. Type the lines wit
   };
 
 - outputs = { self, nixpkgs, ... }: {
-+ outputs = { self, nixpkgs, linrgb, ... }: {
++ outputs = inputs@{ self, nixpkgs, ... }: {
     nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
       modules = [
         ./configuration.nix
-+       linrgb.nixosModules.default
++       inputs.linrgb.nixosModules.default
       ];
 ```
 
-If your `outputs` already uses `inputs@{ ... }`, leave that line alone and add `inputs.linrgb.nixosModules.default` to `modules` instead. Let LinRGB use its own pinned nixpkgs.
+If your `outputs` already binds `inputs`, leave that line unchanged. Let LinRGB use its own pinned nixpkgs.
 
 #### ② Enable LinRGB in `configuration.nix`
 
