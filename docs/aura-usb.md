@@ -19,6 +19,8 @@ The checked-in 36-byte `src/drivers/aura-interface.hid` is a **kernel-cached des
 
 `drivers::aura::tests` checks profile/zone admission, complete fixed and ARGB packet sequences, short writes, `ENODEV`, cancellation between packets, lock contention and a same-path replacement while an effect owns the old fd. Files and fake transports stand in for hardware. The existing session and inventory fixtures exercise stale tickets, sleep and state reconciliation. No test here measures the LED count or the actual colors.
 
+Software validation at `c3fe56d`: formatting, strict Clippy, all 53 tests, Nix flake check/build and udev checks passed. Arch, Debian 13 and Fedora 44 packages were built from the local commit archive, tested (53 tests each), installed in containers and launched with `--diagnostics` as a regular user. The native Nix diagnostic listed the Crosshair fixed Aura interface with active probing disabled. None of these checks exercises an actual output report or proves suspend behavior on a board.
+
 1. Run `linrgb --diagnostics` as the session user, without Apply. On the B550-A, compare the HID interface number and kernel-cached sysfs `report_descriptor` with the fixture. Do not loosen the check for a mismatch; supply the sanitized descriptor and board/USB IDs for review.
 2. Only with the owner's approval: stop other lighting tools, record the original color, apply one distinct fixed color to each supported zone, then to both B550-A zones. Check each output, repeated Apply, animation and suspend/resume without replay. Restore the original color explicitly. Do not unplug internal headers, DIMMs or PCI devices while powered.
 
