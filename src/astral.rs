@@ -9,6 +9,11 @@ pub fn open(card: &Path) -> Result<Ene, Box<dyn Error>> {
     if crate::hardware::nvidia_ene_name(card).is_none() {
         return Err("GPU is not listed for this ASUS ENE driver.".into());
     }
+    let adapter = adapter_number(card)?;
+    open_gpu_ene(adapter)
+}
+
+pub fn adapter_number(card: &Path) -> Result<u32, Box<dyn Error>> {
     let mut adapter = None;
     for entry in fs::read_dir(card)? {
         let entry = entry?;
@@ -26,7 +31,10 @@ pub fn open(card: &Path) -> Result<Ene, Box<dyn Error>> {
             return Err("Multiple NVIDIA buses match this card.".into());
         }
     }
-    let adapter = adapter.ok_or("NVIDIA I²C bus not found.")?;
+    adapter.ok_or_else(|| "NVIDIA I²C bus not found.".into())
+}
+
+fn open_gpu_ene(adapter: u32) -> Result<Ene, Box<dyn Error>> {
     // These ENE GPU firmware layouts share the direct-color register and LED count field.
     open_ene(
         adapter,

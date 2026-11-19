@@ -1,155 +1,166 @@
 use std::{
+    collections::BTreeSet,
     fs, io,
     path::{Path, PathBuf},
 };
 
-pub fn detect_ene_gpus(root: &Path) -> io::Result<Vec<(PathBuf, &'static str)>> {
-    let mut matches = Vec::new();
-    for entry in fs::read_dir(root)? {
-        let path = entry?.path();
-        if let Some(name) = nvidia_ene_name(&path) {
-            matches.push((path, name));
-        }
-    }
-    matches.sort_unstable();
-    Ok(matches)
+pub struct Graphics {
+    pub path: PathBuf,
+    pub ids: [Option<u16>; 4],
+    pub name: String,
+    pub ene: bool,
 }
 
-pub fn nvidia_ene_name(path: &Path) -> Option<&'static str> {
-    let [vendor, device, subvendor, subsystem] =
-        ["vendor", "device", "subsystem_vendor", "subsystem_device"]
-            .map(|key| fs::read_to_string(path.join(key)).ok());
-    let ids = [
-        vendor.as_deref()?.trim(),
-        device.as_deref()?.trim(),
-        subvendor.as_deref()?.trim(),
-        subsystem.as_deref()?.trim(),
-    ];
-    if ids[0] != "0x10de" || ids[2] != "0x1043" {
-        return None;
-    }
-    pci_candidates(ids).find_map(|(family, name)| (family == "ENESMBusController").then_some(name))
+fn pci_ids(path: &Path) -> [Option<u16>; 4] {
+    ["vendor", "device", "subsystem_vendor", "subsystem_device"].map(|key| {
+        let id = fs::read_to_string(path.join(key)).ok()?;
+        let hex = id.trim().strip_prefix("0x")?;
+        (hex.len() == 4)
+            .then(|| u16::from_str_radix(hex, 16).ok())
+            .flatten()
+    })
 }
 
-// A catalogue match is not proof of compatibility; drivers must validate the controller.
-fn pci_candidates(ids: [&str; 4]) -> impl Iterator<Item = (&'static str, &'static str)> {
+fn display_controller(path: &Path) -> bool {
+    fs::read_to_string(path.join("class")).is_ok_and(|s| {
+        s.trim()
+            .strip_prefix("0x")
+            .filter(|s| s.len() == 6)
+            .and_then(|s| u32::from_str_radix(s, 16).ok())
+            .is_some_and(|class| class >> 16 == 3)
+    })
+}
+
+// A catalogue match is not proof of compatibility; the driver must validate the controller.
+fn pci_candidates(ids: [Option<u16>; 4]) -> impl Iterator<Item = (&'static str, &'static str)> {
+    let ids = ids.map(|n| n.map(|v| format!("0x{v:04x}")));
     include_str!("../data/openrgb-pci.tsv")
         .lines()
         .filter_map(move |line| {
             let mut cols = line.split('\t');
-            if !ids.iter().all(|id| cols.next() == Some(*id)) {
+            if !ids
+                .iter()
+                .all(|id| id.as_deref().is_some_and(|id| cols.next() == Some(id)))
+            {
                 return None;
             }
             Some((cols.next()?, cols.next()?))
         })
 }
 
-pub fn other_graphics(root: &Path, supported: &[String]) -> io::Result<Vec<String>> {
+pub fn nvidia_ene_name(path: &Path) -> Option<&'static str> {
+    if !display_controller(path) {
+        return None;
+    }
+    let ids = pci_ids(path);
+    if ids[0] != Some(0x10de) || ids[2] != Some(0x1043) {
+        return None;
+    }
+    pci_candidates(ids).find_map(|(family, name)| (family == "ENESMBusController").then_some(name))
+}
+
+pub fn graphics(root: &Path) -> io::Result<Vec<Graphics>> {
     let mut cards = Vec::new();
     for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        let path = entry.path();
-        let address = entry.file_name().to_string_lossy().into_owned();
-        if supported.contains(&address)
-            || !fs::read_to_string(path.join("class")).is_ok_and(|class| class.starts_with("0x03"))
-        {
+        let path = entry?.path();
+        if !display_controller(&path) {
             continue;
         }
-        let vendor = fs::read_to_string(path.join("vendor"))?;
-        let device = fs::read_to_string(path.join("device"))?;
-        let brand = match vendor.trim() {
-            "0x1002" => "AMD",
-            "0x10de" => "NVIDIA",
-            "0x8086" => "Intel",
-            _ => "GPU",
-        };
-        let subvendor = fs::read_to_string(path.join("subsystem_vendor")).unwrap_or_default();
-        let subsystem = fs::read_to_string(path.join("subsystem_device")).unwrap_or_default();
-        let mut names = std::collections::BTreeSet::new();
-        let mut families = std::collections::BTreeSet::new();
-        for (family, name) in pci_candidates([
-            vendor.trim(),
-            device.trim(),
-            subvendor.trim(),
-            subsystem.trim(),
-        ]) {
+        let ids = pci_ids(&path);
+        let mut names = BTreeSet::new();
+        let mut families = BTreeSet::new();
+        for (family, name) in pci_candidates(ids) {
             names.insert(name);
             families.insert(family);
         }
-        let name = if [
-            vendor.trim(),
-            device.trim(),
-            subvendor.trim(),
-            subsystem.trim(),
-        ] == ["0x1002", "0x7550", "0x1eae", "0x8811"]
-        {
-            "XFX Radeon RX 9070 XT Mercury".to_owned()
+        let ene = ids[0] == Some(0x10de)
+            && ids[2] == Some(0x1043)
+            && families.contains("ENESMBusController");
+        let name = if ids == [0x1002, 0x7550, 0x1eae, 0x8811].map(Some) {
+            "XFX Radeon RX 9070 XT Mercury".into()
         } else if names.is_empty() {
-            brand.to_owned()
+            match ids[0] {
+                Some(0x1002) => "AMD GPU",
+                Some(0x10de) => "NVIDIA GPU",
+                Some(0x8086) => "Intel GPU",
+                _ => "GPU",
+            }
+            .into()
         } else {
-            format!(
-                "{} · Catalogue : {}",
-                names.into_iter().collect::<Vec<_>>().join(" / "),
-                families.into_iter().collect::<Vec<_>>().join(" / ")
-            )
+            let models = names.into_iter().collect::<Vec<_>>().join(" / ");
+            if ene {
+                models
+            } else {
+                format!(
+                    "{models} · {}",
+                    families.into_iter().collect::<Vec<_>>().join(" / ")
+                )
+            }
         };
-        cards.push(format!(
-            "{name} {}:{} · {address}",
-            vendor.trim(),
-            device.trim()
-        ));
+        cards.push(Graphics {
+            path,
+            ids,
+            name,
+            ene,
+        });
     }
-    cards.sort();
+    cards.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(cards)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn pci_catalog_matches_exact_ids_and_keeps_alternative_families() {
         assert!(
-            pci_candidates(["0x1002", "0x7550", "0x1043", "0x0613"])
+            pci_candidates([0x1002, 0x7550, 0x1043, 0x0613].map(Some))
                 .any(|(family, name)| family == "ENESMBusController" && name.contains("9070 XT"))
         );
         assert_eq!(
-            pci_candidates(["0x1002", "0x7550", "0x1458", "0x0613"]).count(),
+            pci_candidates([0x1002, 0x7550, 0x1458, 0x0613].map(Some)).count(),
             0
         );
-        assert!(pci_candidates(["0x1002", "0x7550", "0x1458", "0x2426"]).count() >= 2);
+        assert!(pci_candidates([0x1002, 0x7550, 0x1458, 0x2426].map(Some)).count() >= 2);
     }
-
     #[test]
     fn matches_exact_subsystem() -> io::Result<()> {
-        let root = std::env::temp_dir().join(format!("linrgb-test-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("linrgb-pci-{}", gtk::glib::uuid_string_random()));
         fs::create_dir(&root)?;
-        let result = (|| {
-            for (address, subsystem) in [
-                ("0000:01:00.0", "0x89de"),
-                ("0000:02:00.0", "0x0000"),
-                ("0000:03:00.0", "0x8a2b"),
+        let result = (|| -> io::Result<()> {
+            for (slot, subsystem, class) in [
+                ("01", "0x89de", "0x030000"),
+                ("02", "0x0000", "0x030000"),
+                ("03", "0x8a2b", "0x030200"),
+                ("04", "0x89de", "0x0c0500"),
             ] {
-                let path = root.join(address);
+                let path = root.join(slot);
                 fs::create_dir(&path)?;
-                for (key, value) in [
+                for (k, v) in [
+                    ("class", class),
                     ("vendor", "0x10de"),
                     ("device", "0x2c02"),
                     ("subsystem_vendor", "0x1043"),
                     ("subsystem_device", subsystem),
                 ] {
-                    fs::write(path.join(key), format!("{value}\n"))?;
+                    fs::write(path.join(k), v)?;
                 }
             }
-            detect_ene_gpus(&root).map(|cards| {
-                cards
-                    .into_iter()
-                    .map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-            })
+            fs::remove_file(root.join("02/device"))?;
+            let cards = graphics(&root)?;
+            assert_eq!(cards.len(), 3);
+            assert_eq!(
+                cards.iter().map(|c| c.ene).collect::<Vec<_>>(),
+                [true, false, true]
+            );
+            for c in cards {
+                assert_eq!(c.ene, nvidia_ene_name(&c.path).is_some());
+            }
+            assert!(nvidia_ene_name(&root.join("04")).is_none());
+            Ok(())
         })();
         fs::remove_dir_all(root)?;
-        assert_eq!(result?, ["0000:01:00.0", "0000:03:00.0"]);
-        Ok(())
+        result
     }
 }

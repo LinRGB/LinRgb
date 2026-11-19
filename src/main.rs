@@ -5,6 +5,8 @@ mod avatar;
 mod board;
 mod color_wheel;
 mod corsair;
+mod device_list;
+mod discovery;
 mod effects;
 mod hardware;
 mod i18n;
@@ -19,7 +21,6 @@ use gtk::{gio, glib, prelude::*};
 use i18n::tr;
 use std::{
     cell::{Cell, RefCell},
-    path::Path,
     rc::Rc,
     sync::{
         Arc,
@@ -28,17 +29,12 @@ use std::{
     time::Duration,
 };
 
-const PCI: &str = "/sys/bus/pci/devices";
-const TARGETS: [(&str, &str); 3] = [
-    (
-        "Crosshair VIII Hero (Wi-Fi)",
-        "Motherboard · fixed Aura zone",
-    ),
-    ("ENE RAM · 0x72", "Memory"),
-    ("ENE RAM · 0x73", "Memory"),
-];
-
 fn main() -> glib::ExitCode {
+    if std::env::args_os().skip(1).eq(["--diagnostics"]) {
+        let inventory = discovery::scan(std::path::Path::new("/sys"), std::path::Path::new("/dev"));
+        println!("{}", inventory.diagnostics());
+        return glib::ExitCode::SUCCESS;
+    }
     let app = gtk::Application::builder()
         .application_id("io.github.linrgb.LinRgb")
         .build();
@@ -146,19 +142,6 @@ fn main() -> glib::ExitCode {
         search.set_placeholder_text(Some(tr("Find a device…", "Rechercher un périphérique…")));
         devices.append(&search);
         let list = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        let mut checks = Vec::new();
-        for (name, kind) in TARGETS {
-            let kind = match kind {
-                "Graphics card" => tr(kind, "Carte graphique"),
-                "Motherboard · fixed Aura zone" => tr(kind, "Carte mère · zone Aura fixe"),
-                _ => tr(kind, "Mémoire"),
-            };
-            let check = gtk::CheckButton::with_label(&format!("{name} · {kind}"));
-            check.add_css_class("device-row");
-            list.append(&check);
-            checks.push(check);
-        }
-        let kernel_checks = Rc::new(RefCell::new(Vec::<(effects::Target, gtk::CheckButton)>::new()));
         devices.append(&list);
         let inventory = label("", "dim-label");
         devices.append(&inventory);
@@ -172,19 +155,7 @@ fn main() -> glib::ExitCode {
         lighting.add_css_class("lighting-card");
         lighting.append(&label(tr("Lighting", "Éclairage"), "title-2"));
         workspace.append(&lighting);
-        let fixed = checks.clone();
-        let detected = kernel_checks.clone();
-        search.connect_search_changed(move |entry| {
-            let query = entry.text().trim().to_lowercase();
-            let detected = detected.borrow();
-            for check in fixed.iter().chain(detected.iter().map(|(_, check)| check)) {
-                check.set_visible(
-                    check
-                        .label()
-                        .is_some_and(|name| name.to_lowercase().contains(&query)),
-                );
-            }
-        });
+        let selected_targets = device_list::install(&list, &inventory, &search, &refresh, &all);
         let breathing = tr("Breathing", "Respiration");
         let cycle = tr("Color cycle", "Cycle de couleurs");
         let mode = gtk::DropDown::from_strings(&[solid, fade, breathing, cycle]);
@@ -276,21 +247,6 @@ fn main() -> glib::ExitCode {
         let status = label("", "dim-label");
         lighting.append(&status);
         content.append(&preview::panel(&mode, &hex, &end, &period, &alternate, &saturation));
-        let selection = checks.clone();
-        let kernel_selection = kernel_checks.clone();
-        all.connect_clicked(move |_| {
-            let kernel = kernel_selection.borrow();
-            for check in selection
-                .iter()
-                .chain(kernel.iter().map(|(_, check)| check))
-            {
-                if check.is_sensitive() {
-                    check.set_active(true);
-                }
-            }
-        });
-        let selection = checks.clone();
-        let kernel_selection = kernel_checks.clone();
         let buttons = [apply.downgrade(), reset.downgrade()];
         let submit = move |reset: bool| {
             if buttons.iter().filter_map(|button| button.upgrade()).any(|button| !button.is_sensitive()) {
@@ -305,25 +261,7 @@ fn main() -> glib::ExitCode {
                 status.set_text(tr("Enter valid HEX colors for this effect.", "Saisissez des couleurs HEX valides pour cet effet."));
                 return;
             };
-            use effects::Target;
-            let mut targets = Vec::new();
-            for (index, target) in [
-                Target::Board,
-                Target::Ram(0x72),
-                Target::Ram(0x73),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if selection[index].is_sensitive() && selection[index].is_active() {
-                    targets.push((selection[index].label().map_or_else(|| TARGETS[index].0.to_owned(), |label| label.to_string()), target));
-                }
-            }
-            for (target, check) in kernel_selection.borrow().iter() {
-                if check.is_active() {
-                    targets.push((check.label().unwrap_or_default().to_string(), target.clone()));
-                }
-            }
+            let targets = selected_targets();
             if targets.is_empty() {
                 status.set_text(tr("No devices selected.", "Aucun périphérique sélectionné."));
                 return;
@@ -382,83 +320,6 @@ fn main() -> glib::ExitCode {
         let apply_settings = submit.clone();
         apply.connect_clicked(move |_| apply_settings(false));
         reset.connect_clicked(move |_| submit(true));
-        let update = move || {
-            let gpus = hardware::detect_ene_gpus(Path::new(PCI)).unwrap_or_default();
-            let supported = gpus.iter().filter_map(|(path, _)| path.file_name()).map(|name| name.to_string_lossy().into_owned()).collect::<Vec<_>>();
-            let crosshair = board::check_board().is_ok();
-            let b550 = board::b550_present();
-            let board_supported = crosshair || b550;
-            checks[0].set_sensitive(board_supported);
-            if b550 {
-                checks[0].set_label(Some("ASUS ROG STRIX B550-A GAMING · Aura RGB"));
-            }
-            for check in &checks[1..] {
-                check.set_sensitive(crosshair);
-            }
-            let mut text = match hardware::other_graphics(Path::new(PCI), &supported) {
-                Ok(cards) if cards.is_empty() => String::new(),
-                Ok(cards) => format!("{}:\n{}", tr("GPUs detected without an RGB driver", "GPU détectés sans pilote RGB"), cards.join("\n")),
-                Err(error) => format!("{}: {error}", tr("PCI inventory unavailable", "Inventaire PCI indisponible")),
-            };
-            if !board_supported && let Ok(name) = std::fs::read_to_string("/sys/class/dmi/id/board_name") {
-                let name = name.trim();
-                if !name.is_empty() {
-                    if !text.is_empty() { text.push('\n'); }
-                    text.push_str(&format!("{}: {name}", tr("Motherboard without an RGB driver", "Carte mère sans pilote RGB")));
-                }
-            }
-            let mut dynamic: Vec<_> = gpus.into_iter().map(|(path, name)| {
-                (format!("{name} · ENE"), effects::Target::EneGpu(path))
-            }).collect();
-            if b550 {
-                dynamic.push(("ASUS B550-A · Addressable RGB Header 1".to_owned(), effects::Target::BoardArgb));
-            }
-            if b550 && board::ram_bus().is_ok() {
-                dynamic.extend([0x5a, 0x5b].map(|address| {
-                    (format!("Corsair Vengeance RGB Pro SL · {address:#04x} · Experimental"), effects::Target::Corsair(address))
-                }));
-            }
-            match kernel_led::detect(Path::new("/sys/class/leds")) {
-                Ok(paths) => {
-                    dynamic.extend(paths.into_iter().map(|path| {
-                        (format!("{} · Linux LED", led_name(&path)), effects::Target::Kernel(path))
-                    }));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    if !text.is_empty() {
-                        text.push('\n');
-                    }
-                    text.push_str(&format!("{}: {error}", tr("Linux LED inventory unavailable", "Inventaire des LED Linux indisponible")));
-                }
-            }
-            if let Ok(devices) = lamp_array::detect(Path::new("/sys/bus/hid/devices")) {
-                for (name, path) in devices {
-                    if let Some(path) = path {
-                        dynamic.push((format!("{name} · WDL"), effects::Target::LampArray(path)));
-                    } else {
-                        if !text.is_empty() { text.push('\n'); }
-                        text.push_str(&format!("{name} · {}", tr("LampArray detection only", "LampArray : détection seule")));
-                    }
-                }
-            }
-            let mut entries = kernel_checks.borrow_mut();
-            let old = std::mem::take(&mut *entries);
-            for (_, check) in &old { list.remove(check); }
-            let query = search.text().trim().to_lowercase();
-            for (name, target) in dynamic {
-                let check = gtk::CheckButton::with_label(&name);
-                check.set_active(old.iter().any(|(previous, check)| *previous == target && check.is_active()));
-                check.add_css_class("device-row");
-                check.set_visible(name.to_lowercase().contains(&query));
-                list.append(&check);
-                entries.push((target, check));
-            }
-            inventory.set_visible(!text.is_empty());
-            inventory.set_text(&text);
-        };
-        update();
-        refresh.connect_clicked(move |_| update());
         let scroll = gtk::ScrolledWindow::builder()
             .child(&content)
             .hexpand(true)
@@ -468,13 +329,6 @@ fn main() -> glib::ExitCode {
         window.present();
     });
     app.run()
-}
-
-fn led_name(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or(path.as_os_str())
-        .to_string_lossy()
-        .into_owned()
 }
 
 fn label(text: &str, class: &str) -> gtk::Label {

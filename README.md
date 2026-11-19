@@ -130,7 +130,7 @@ Build as your normal user on both distributions. Both packages include the launc
 
 ### Devices and lighting
 
-- **Device selection:** search the list, select devices individually, or use **Select all**. The status area reports success or errors per device.
+- **Device selection:** LinRgb builds its list from Linux device metadata without probing SMBus addresses. Search the list, select devices individually, or use **Select all**. A RAM slot marked *unverified* is a candidate on a supported board, not a detected DIMM. Select it individually to request identification on Apply. **Select all** skips these candidates and inaccessible interfaces. The status area reports results per device.
 - **Solid color:** set one steady color using the wheel or a six-digit HEX code. The brightness control adjusts its intensity.
 - **Two-color fade:** hold Color A, briefly fade to Color B, then repeat in reverse. The cycle duration covers the full round trip.
 - **Breathing:** pulse from dark to the selected color and back to dark. Optionally alternate between Colors A and B on successive breaths.
@@ -156,6 +156,14 @@ LinRgb creates `$XDG_CONFIG_HOME/LinRGB/themes/` on first launch, using `~/.conf
 - **Fractal Adjust Pro Hub (`36BC:1001`):** selectable in Windows Dynamic Lighting (WDL) mode when it exposes the supported HID LampArray report layout. LinRgb sends one color to all lamps on the hub. Other LampArray layouts are detected but not controlled. In the hub’s standalone mode, it will not appear as a WDL target.
 - **Linux multicolor LEDs:** LinRgb can use RGB devices exposed by the kernel under `/sys/class/leds`, subject to driver support and permissions. The white channel stays off on RGBW devices. See the [Linux multicolor LED documentation](https://docs.kernel.org/leds/leds-class-multicolor.html).
 - **PCI inventory:** an identified GPU is not necessarily controllable. The [OpenRGB-derived catalog](data/openrgb-pci.tsv) matches the four PCI IDs and lists candidate controller families; it never authorizes RGB writes by itself.
+
+### Refresh and report a device
+
+Discovery runs at startup, on manual refresh, on relevant `hidraw`/`i2c-dev` node changes, and after a logind resume notification. Refresh manually for LED-only changes or when event monitoring is unavailable. Rediscovery does not send a color, restore an effect, or grant permissions. A PCI match alone never confirms the firmware.
+
+Run `linrgb --diagnostics` without `sudo` for a local JSON summary. This command does not start GTK or open device nodes. It reports backend matches, possible DIMM addresses and access hints, not serial numbers, raw sysfs names, hostnames or profiles. Nothing is uploaded. When reporting an issue, review the report before sharing it, and state which component, action and LinRgb revision were involved.
+
+To contribute a backend, document the passive match and the separate identity checks required before writes. Provide fixtures for mismatched hardware, missing permissions and disconnects, plus bounded report sizes. State the protocol source and licensing. Report physical color/effect tests separately from fixture tests. Do not extend udev access just to make detection succeed.
 
 ## Develop and verify
 
