@@ -23,7 +23,7 @@ These are standalone packages, not an AUR submission, Debian repository or Fedor
 **Just want to see what LinRGB detects?** Run this as your normal user. It does not install device access rules or change any colors:
 
 ```bash
-nix run github:LinRGB/LinRgb/v1.0.0-beta.2 -- --diagnostics
+nix run github:LinRGB/LinRgb/main -- --diagnostics
 ```
 
 **Want the desktop app and device access?** If you already use a NixOS flake on x86-64, follow these three steps:
@@ -38,7 +38,7 @@ The `+` lines below are additions to your **existing** flake. Type the lines wit
 
 ```diff
   inputs = {
-+   linrgb.url = "github:LinRGB/LinRgb/v1.0.0-beta.2";
++   linrgb.url = "github:LinRGB/LinRgb/main";
   };
 
 - outputs = { self, nixpkgs, ... }: {
@@ -70,12 +70,12 @@ sudo nixos-rebuild switch --flake .#my-host
 linrgb --version
 ```
 
-**Expected:** `LinRGB 1.0.0-beta.2`. Open **LinRGB** from your application menu as your normal user. The module installs the app, registers the udev rules and loads `i2c-dev`; no manual permission changes are needed.
+**Expected:** `LinRGB` followed by the installed version. Open **LinRGB** from your application menu as your normal user. The module installs the app, registers the udev rules and loads `i2c-dev`; no manual permission changes are needed.
 
 <details>
-<summary>Updating to a later beta</summary>
+<summary>Updating LinRGB from main</summary>
 
-Change the tag in step ①, run `nix flake update linrgb`, then repeat the rebuild in step ③.
+The input follows `main`, not a release tag. Nix records the chosen commit in `flake.lock` so rebuilds are reproducible. To pick up newer commits, run `nix flake update linrgb` in your flake directory, then repeat the rebuild in step ③. No URL change is needed.
 
 </details>
 
