@@ -134,6 +134,30 @@ fn both_pro_sl_ids_accept_repeated_direct_frames_until_first_failure() {
     }
 }
 #[test]
+fn two_live_slots_keep_distinct_frames_and_a_failure_is_local() {
+    assert_eq!([Slot::A as u16, Slot::B as u16], [0x5a, 0x5b]);
+    let stop = AtomicBool::new(false);
+    let t = Generation::default().ticket();
+    let a = info(0x0300);
+    let b = info(0x0301);
+    let mut qa = transcript(a, crc(&a));
+    let mut qb = transcript(b, crc(&b));
+    qa.extend([Step::Frame(expected([20, 0, 0])), Step::FailFrame]);
+    qb.extend([
+        Step::Frame(expected([0, 20, 0])),
+        Step::Frame(expected([0, 0, 20])),
+    ]);
+    let mut first = Session::connect(&stop, &t, || bind(Mock(&mut qa), &stop, &t)).unwrap();
+    let mut second = Session::connect(&stop, &t, || bind(Mock(&mut qb), &stop, &t)).unwrap();
+    assert!(first.set_rgb([20, 0, 0]).unwrap());
+    assert!(second.set_rgb([0, 20, 0]).unwrap());
+    assert!(first.set_rgb([1; 3]).is_err());
+    assert!(first.set_rgb([2; 3]).is_err());
+    assert!(second.set_rgb([0, 0, 20]).unwrap());
+    drop((first, second));
+    assert!(qa.is_empty() && qb.is_empty());
+}
+#[test]
 fn invalidated_ticket_after_identification_prevents_first_color() {
     let i = info(0x0300);
     let mut q = transcript(i, crc(&i));
