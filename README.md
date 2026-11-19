@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ressources/LinRGB-banner.png" alt="LinRgb banner" width="900">
+</p>
+
 # LinRgb — 1.0 Beta 1
 
 **AI disclosure:** LinRgb was built with AI assistance under the maintainer’s direction. AI generated much of the code and documentation, and the maintainer tested selected hardware and workflows. A passing software test does not mean an unlisted device is safe or supported.
