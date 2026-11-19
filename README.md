@@ -81,15 +81,21 @@ The input follows `main`, not a release tag. Nix records the chosen commit in `f
 
 ## Hardware: what works, and what is only a candidate?
 
-| Controller | Identification and available control | Evidence / limits |
+**Real-PC results below refer to the specific operation tested on earlier software.** They are not a physical sign-off for every effect, firmware revision or beta.4 session.
+
+| Evidence | Hardware | What the record shows |
 |---|---|---|
-| Linux multicolor LED class | RGB/RGBW channel order and scale rechecked on the same sysfs attachment; uniform color | Temporary filesystem tests; depends on the kernel driver |
-| Fractal Adjust Pro Hub | WDL mode, exact HID descriptor, lamp count and update interval from the open device | Older setup exercised; new lifecycle tested with fixtures, not physically on this build |
-| ASUS Aura USB | Crosshair VIII Hero (Wi-Fi) fixed zone; Strix B550-A fixed and addressable header 1 on a matching interface | Earlier Crosshair solid color test. B550-A layout experimental; counts are profile positions, not measured LEDs |
-| Corsair Vengeance RGB Pro SL / Pro DDR4 | Select slot `0x5A` or `0x5B` individually on the matched B550-A adapter. Requires a valid information packet, exact product and protocol 4 | SL direct color reported on earlier software; restored sessions and new ten-position **Pro** variant tested in simulation. Protocol 3 and Vengeance RS have **no RGB writer** |
-| ENE memory | Crosshair setup, two opt-in slots, firmware signature required | Earlier solid-color tests at `0x72`/`0x73`; not universal DIMM discovery |
-| ASUS NVIDIA ENE GPU | Four matching PCI IDs plus compatible controller firmware and count | Earlier Astral RTX 5080 OC test; other catalogued cards experimental |
-| Other PCI / HID matches | Inventory only without a matching driver | No direct AMD/XFX GPU backend; a card connected to a motherboard-sync header is controlled via that header |
+| Real PC · solid color | ASUS ROG Astral GeForce RTX 5080 OC | The card responded to a fixed color. This result does not extend to other ASUS GPUs. |
+| Real PC · solid color | ASUS ROG Crosshair VIII Hero (Wi-Fi) | Fixed Aura zone only. Its addressable headers are not supported. |
+| Real PC · solid color | Two ENE RGB DIMMs on the Crosshair | Both modules at `0x72` and `0x73` responded. These are not universal DIMM addresses. |
+| Real PC · earlier report | Corsair Vengeance RGB Pro **SL** DDR4 on the Strix B550-A | Direct color worked before the session migration. The restored driver and isolation between `0x5A` and `0x5B` were tested in simulation. |
+| Real PC · earlier setup | Fractal Adjust Pro Hub in WDL mode | The hub was exercised on hardware; the new connection and update-interval checks were tested with simulated reports. |
+| Simulation only | Corsair Vengeance RGB **Pro** DDR4 (non-SL); Linux multicolor LED class | Pro: ten-position direct frames on protocol 4. Kernel LEDs: RGB/RGBW channel order and scale tested with temporary sysfs files. |
+| Simulation only for the migrated driver | ASUS ROG Strix B550-A Gaming | Fixed outputs and Addressable RGB Header 1 tested together on a mock. The reported XFX RX 9070 XT Mercury connection is **motherboard sync**, not direct GPU support. |
+| Candidate · RGB unconfirmed | Other ASUS NVIDIA ENE catalogue matches | Experimental control requires four matching PCI IDs plus supported firmware and LED count. A catalogue entry is not a hardware test. |
+| Identified or listed · no RGB writer | Corsair Vengeance RS DDR4, protocol 3 Pro, unsupported PCI/HID devices | A device can be listed or identified without a supported color command. A passive RAM slot is not proof that a DIMM is present. |
+
+[Validation sources and outstanding hardware checks](docs/compatibility.md)
 
 **Discovery is passive; Apply is not.** Close other lighting tools and their background services before testing. A new attachment or an I/O failure does not automatically inherit or restart an effect. A command already submitted to the kernel cannot be recalled. I²C device permissions grant access to an adapter, not just its RGB chip. See [Aura](docs/aura-usb.md) and [Corsair](docs/corsair-sessions.md) for the exact checks.
 
