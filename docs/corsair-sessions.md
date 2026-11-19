@@ -1,0 +1,15 @@
+# Corsair Pro SL: read-only verification boundary
+
+**Status: family identification only on hardware.** This branch deliberately does not issue a writable Corsair session on Linux. The prior driver could apply uniform RGB on the reported B550-A setup, but its full identification was not read-only. No claim of new module or firmware support.
+
+- Inventory checks the existing B550-A DMI profile, PCI host IDs and unique PIIX4 adapter name. Only `0x5a` and `0x5b` are opt-in candidates; enumeration does not open `/dev/i2c-*` or try either address. Replacing the adapter changes the target even when its bus number is reused.
+- Explicit Apply rechecks the host, opens one fd with the normal (non-forced) slave-address ioctl, checks the character device number, canonical adapter parent and directory inode, and takes a nonblocking Linux OFD lock keyed by slot on that device. A busy kernel-owned address or a conflicting cooperating client is not bypassed. Ordinary application locks cannot exclude uncooperative SMBus tools. A bus fd identifies an adapter, not a DIMM serial number.
+- Only the existing SMBus **read-byte-data** signature transactions (`0x43`, then `0x44` if the first matches) are permitted. Each is preceded by a cancellation and inventory-ticket check. These registers identify a controller **family**, not the exact module, protocol or layout. A missing response, stale ticket or error ends the attempt. No retry, scan, busy polling, reopen, or replay after suspend. An ioctl already in progress cannot be recalled.
+- The previous module-info query selected a buffer by **writing** `0x61=0` and `0x21=0`, then reading 32 bytes from `0x40` and a CRC from `0x42`. This is not a read-only transaction. Reading an unselected buffer, treating family matches as module proof, or using a cached descriptor would weaken the old checks. None is used as a fallback. The UI labels both candidates accordingly; Apply reports the reason for withholding RGB.
+- The session contract retains VID/PID, protocol and CRC checks and the existing direct RGB frame. A synthetic transport can supply a complete info block for testing. It is **not** a Linux information source. Ten positions are a profile constant, not a detected lamp count. No per-frame identity polling or persistent command.
+
+## Validation remaining
+
+Tests exercise read order and short-circuiting, conflicts/release on independent file descriptions, same-number adapter replacement, cancellation, stale inventory, invalid module data, CRC, and terminal I/O errors. Synthetic info and RGB frames do not establish physical compatibility. No new captures or live SMBus transactions were made for this milestone.
+
+Before enabling output, obtain a documented read-only source of complete module identity **or** explicit approval for the existing two-selector module-info transaction after the family gate. Do not improvise a probe. On the owner's B550-A, validate the adapter/slot mapping, conflict handling, and (only with separate permission) a single fixed color on each known module before effects. Never hot-swap memory to test invalidation.

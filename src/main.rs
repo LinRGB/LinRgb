@@ -4,7 +4,6 @@ mod astral;
 mod avatar;
 mod board;
 mod color_wheel;
-mod corsair;
 mod device_list;
 mod discovery;
 mod drivers;

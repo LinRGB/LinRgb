@@ -40,7 +40,7 @@ impl Target {
             ),
             Self::EneGpu(_) => ("ene-gpu", "pci-candidate", Smbus, Direct),
             Self::Ram(_) => ("ene-dram", "slot-candidate", Smbus, Memory),
-            Self::Corsair(_) => ("corsair-dram", "slot-candidate", Smbus, Memory),
+            Self::Corsair(..) => ("corsair-dram", "slot-candidate", Smbus, Memory),
         };
         Driver {
             id,

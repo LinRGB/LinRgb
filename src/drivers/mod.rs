@@ -1,5 +1,6 @@
 //! Static backend dispatch. Inventory holds candidates, never a writable handle.
 pub(crate) mod aura;
+pub(crate) mod corsair;
 mod registry;
 pub use registry::Lane;
 pub(crate) mod kernel_led;
@@ -24,7 +25,7 @@ pub enum Target {
     EneGpu(PathBuf),
     Aura(aura::Attachment, aura::Zone),
     Ram(u16),
-    Corsair(u16),
+    Corsair(corsair::Adapter, corsair::Slot),
     Kernel(PathBuf, u64, kernel_led::Layout),
     LampArray(PathBuf),
 }
@@ -76,6 +77,9 @@ pub enum Capabilities {
         min_interval: Duration,
     }, // read/write hidraw features
     Aura(aura::Layout),
+    Corsair {
+        protocol: u8,
+    },
     LegacyDirect, // protocol-specific details not exposed as verified capabilities
 }
 impl Capabilities {
@@ -95,6 +99,9 @@ impl Capabilities {
                 min_interval,
             } => Some(format!("{lamps} LED · min {} µs", min_interval.as_micros())),
             Self::Aura(layout) => Some(layout.description().into()),
+            Self::Corsair { protocol } => Some(format!(
+                "Corsair protocol {protocol} · profile: 10 positions"
+            )),
             Self::LegacyDirect => None,
         }
     }
@@ -208,7 +215,9 @@ impl Target {
                     let mut device = crate::board::open_ram(address)?;
                     Box::new(move |rgb| device.set(rgb))
                 }
-                Self::Corsair(address) => Box::new(crate::corsair::open(address)?),
+                Self::Corsair(adapter, slot) => {
+                    return corsair::connect(&adapter, slot, stop, ticket);
+                }
                 Self::Aura(attachment, zone) => return connections.bind(attachment, zone, stop),
             };
             Ok((Capabilities::LegacyDirect, sink))

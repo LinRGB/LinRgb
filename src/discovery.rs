@@ -7,6 +7,7 @@ use crate::{
     drivers::{
         Target,
         aura::{self, Zone},
+        corsair::{Adapter, Slot},
         kernel_led, lamp_array,
     },
     hardware,
@@ -62,12 +63,16 @@ impl Device {
             Target::Aura(_, Zone::Fixed) => tr("matched board layout", "modèle de carte reconnu"),
             Target::LampArray(_) => tr("matched HID layout", "descripteur HID reconnu"),
             Target::Kernel(..) => tr("kernel RGB interface", "interface RGB du noyau"),
-            Target::EneGpu(_) | Target::Ram(_) | Target::Corsair(_) => "", // labels already state the pending check
+            Target::Corsair(..) => tr(
+                "family check only; RGB unavailable",
+                "vérification de famille uniquement ; RGB indisponible",
+            ),
+            Target::EneGpu(_) | Target::Ram(_) => "", // labels already state the pending check
         }
     }
 
     pub fn bulk_selectable(&self) -> bool {
-        !matches!(self.target, Target::Ram(_) | Target::Corsair(_))
+        !matches!(self.target, Target::Ram(_) | Target::Corsair(..))
             && self.access == Access::Available
     }
 }
@@ -101,7 +106,7 @@ impl Inventory {
     pub fn diagnostics(&self) -> serde_json::Value {
         let devices: Vec<_> = self.devices.iter().map(|d| {
             let driver=d.target.driver();
-            let address=match d.target {Target::Ram(a)|Target::Corsair(a)=>Some(a),_=>None};
+            let address=match d.target {Target::Ram(a)=>Some(a),Target::Corsair(_,slot)=>Some(slot as u16),_=>None};
             serde_json::json!({"backend":driver.id, "match":driver.evidence, "required_interface": driver.interface.description(), "slot_address":address.map(|a|format!("0x{a:02x}")), "access":match d.access { Access::Available=>"available", Access::Denied=>"denied", Access::Missing=>"interface-unavailable" }})
         }).collect();
         let graphics: Vec<_> = self
@@ -199,18 +204,9 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
                 }
                 Err(e) => out.notes.push(format!("{model} · Aura USB: {e}")),
             }
-            if let Ok(bus) = board::ram_bus_at(&pci.join("0000:00:14.0")) {
-                let candidates = if profile == aura::Profile::Strix {
-                    [Target::Corsair(0x5a), Target::Corsair(0x5b)]
-                } else {
-                    [Target::Ram(0x72), Target::Ram(0x73)]
-                };
-                for target in candidates {
-                    let (name, addr) = match target {
-                        Target::Ram(a) => ("ENE RAM", a),
-                        Target::Corsair(a) => ("Corsair Pro SL", a),
-                        _ => unreachable!(),
-                    };
+            let controller = pci.join("0000:00:14.0");
+            if let Ok(bus) = board::ram_bus_at(&controller) {
+                let mut slot_row = |target, name, addr: u16| {
                     out.add(
                         target,
                         format!(
@@ -219,6 +215,21 @@ pub fn scan(sys: &Path, dev: &Path) -> Inventory {
                         ),
                         bus_access(bus),
                     );
+                };
+                if profile == aura::Profile::Strix {
+                    if let Ok(adapter) = Adapter::observe(&controller, bus) {
+                        for slot in [Slot::A, Slot::B] {
+                            slot_row(
+                                Target::Corsair(adapter.clone(), slot),
+                                "Corsair Pro SL",
+                                slot as u16,
+                            );
+                        }
+                    }
+                } else {
+                    for addr in [0x72, 0x73] {
+                        slot_row(Target::Ram(addr), "ENE RAM", addr);
+                    }
                 }
             }
         } else if !model.is_empty() {
