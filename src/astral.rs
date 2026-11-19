@@ -59,9 +59,19 @@ pub fn open_ene(
     fixed_leds: Option<u8>,
 ) -> Result<Ene, Box<dyn Error>> {
     let mut bus = LinuxI2CDevice::new(format!("/dev/i2c-{adapter}"), address)?;
+    if fixed_leds.is_some() {
+        // Match the ENE DRAM detection handshake before selecting a register.
+        if bus.smbus_read_byte().is_err() {
+            bus.smbus_read_byte_data(0x00).map_err(|error| {
+                format!("ENE probe on /dev/i2c-{adapter} at {address:#04x}: {error}")
+            })?;
+        }
+    }
     let mut read = |register: u16| {
-        bus.smbus_write_word_data(0x00, register.swap_bytes())?;
+        bus.smbus_write_word_data(0x00, register.swap_bytes())
+            .map_err(|error| format!("ENE select register {register:#06x}: {error}"))?;
         bus.smbus_read_byte_data(0x81)
+            .map_err(|error| format!("ENE read register {register:#06x}: {error}"))
     };
     let mut identity = [0; 15];
     let length = identities
