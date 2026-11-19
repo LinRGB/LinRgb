@@ -1,3 +1,9 @@
+linrgb (1.0.0~beta.4-1) unstable; urgency=medium
+
+  * Use the square LinRGB artwork throughout the desktop and tray.
+
+ -- LinRGB maintainers <Yuna404@users.noreply.github.com>  Thu, 19 Nov 2026 17:22:00 +0000
+
 linrgb (1.0.0~beta.3-1) unstable; urgency=medium
 
   * Restore the native tray context menu.

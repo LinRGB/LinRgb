@@ -1,7 +1,7 @@
 pkgname=linrgb
-pkgver=1.0.0beta.3
+pkgver=1.0.0beta.4
 pkgrel=1
-_version=1.0.0-beta.3
+_version=1.0.0-beta.4
 pkgdesc='Native RGB lighting control for Linux'
 arch=('x86_64')
 url='https://github.com/LinRGB/LinRgb'
@@ -9,7 +9,7 @@ license=('LicenseRef-NotDeclared')
 depends=('gtk4' 'systemd-libs')
 makedepends=('rust' 'pkgconf' 'systemd')
 source=("$url/releases/download/v$_version/$pkgname-$_version.tar.gz")
-sha256sums=('e685c9db958fa957262b7ce2504a42df673b879bd7d4ebcd167db001c034d01a')
+sha256sums=('9a8d682f4980c422603cd28a74aeeff68bb39cb0de21a2bf834e8e8d382cb72f')
 
 prepare() {
   cd "$srcdir/$pkgname-$_version"
