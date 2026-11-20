@@ -14,6 +14,7 @@ rustPlatform.buildRustPackage {
     fileset = lib.fileset.unions [
       ../Cargo.toml
       ../Cargo.lock
+      ../LICENSE
       ../notices
       ../src
       ../packaging
@@ -30,11 +31,13 @@ rustPlatform.buildRustPackage {
   postInstall = ''
     install -Dm644 packaging/io.github.linrgb.LinRgb.desktop $out/share/applications/io.github.linrgb.LinRgb.desktop
     install -Dm644 packaging/io.github.linrgb.LinRgb.svg $out/share/icons/hicolor/scalable/apps/io.github.linrgb.LinRgb.svg
-    install -Dm644 -t $out/share/doc/linrgb notices/*
+    install -Dm644 -t $out/share/doc/linrgb LICENSE notices/*
     install -Dm644 packaging/70-linrgb.rules $out/lib/udev/rules.d/70-linrgb.rules
   '';
   meta = {
     description = "Native RGB lighting control for Linux";
+    # Code and catalogue only; see notices/README.txt for bundled assets.
+    license = with lib.licenses; [ mit gpl2Plus ];
     mainProgram = "linrgb";
     platforms = [ "x86_64-linux" ];
   };

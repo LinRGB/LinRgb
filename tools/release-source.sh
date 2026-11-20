@@ -8,5 +8,5 @@ test -n "$version"
 # Exclude the distro recipe wrappers: they pin the hash of this very archive.
 # All build inputs, the locked deps and shared install files come from the named tree.
 git archive --format=tar --mtime=1970-01-01T00:00:00Z --prefix="linrgb-$version/" "$rev^{tree}" \
-  Cargo.toml Cargo.lock src data design/theme.example.json packaging/70-linrgb.rules \
+  LICENSE Cargo.toml Cargo.lock src data design/theme.example.json packaging/70-linrgb.rules \
   packaging/io.github.linrgb.LinRgb.desktop packaging/io.github.linrgb.LinRgb.svg notices | gzip -n > "$out"
