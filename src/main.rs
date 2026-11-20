@@ -12,6 +12,7 @@ mod hardware;
 mod hid;
 mod i18n;
 mod monitor;
+mod palette_editor;
 mod preview;
 mod profiles;
 mod tray;
@@ -164,7 +165,7 @@ fn main() -> glib::ExitCode {
         workspace.append(&lighting);
         let breathing = tr("Breathing", "Respiration");
         let cycle = tr("Color cycle", "Cycle de couleurs");
-        let mode = gtk::DropDown::from_strings(&[solid, fade, breathing, cycle]);
+        let mode = gtk::DropDown::from_strings(&[solid, fade, breathing, cycle, tr("Aurora","Aurore"), tr("Gradient flow","Dégradé continu"),tr("Pulse","Impulsion")]);
         mode.update_property(&[gtk::accessible::Property::Label(tr("Lighting mode", "Mode d’éclairage"))]);
         lighting.append(&mode);
         let colors = adaptive::pair(9, 50);
@@ -190,21 +191,34 @@ fn main() -> glib::ExitCode {
         settings.append(&period);
         lighting.append(&settings);
         lighting.append(&alternate);
+        let palettes=palette_editor::Controls::new(&saturation);
+        lighting.append(&palettes.custom);
+        let cycle_row=palette_editor::row(&palettes.cycle);
+        let aurora_row=palette_editor::row(&palettes.aurora);
+        lighting.append(&cycle_row); lighting.append(&aurora_row);
         lighting.append(&saturation_row);
         let update_mode = {
+            let custom=palettes.custom.downgrade();
             let (mode, alternate) = (mode.downgrade(), alternate.downgrade());
             move || {
                 let (Some(mode), Some(alternate)) = (mode.upgrade(), alternate.upgrade()) else { return; };
                 let index = mode.selected();
-                first.set_visible(index != 3);
-                second.set_visible(index == 1 || (index == 2 && alternate.is_active()));
+                let Some(custom)=custom.upgrade() else{return;};
+                custom.set_visible(index == 3);
+                cycle_row.set_visible(index == 3 && custom.is_active());
+                aurora_row.set_visible(index == 4);
+                first.set_visible(!matches!(index,3|4));
+                second.set_visible(matches!(index,1|5|6) || (index == 2 && alternate.is_active()));
                 settings.set_visible(index != 0);
                 alternate.set_visible(index == 2);
-                saturation_row.set_visible(index == 3);
+                saturation_row.set_visible(index == 3 && !custom.is_active());
                 let (title, description) = match index {
                     1 => (fade, tr("Hold each color, then fade briefly and smoothly to the other.", "Chaque couleur reste fixe avant un court fondu.")),
                     2 => (breathing, tr("Light rises and falls to black. Optionally alternate colors between breaths.", "La lumière monte puis s’éteint. Alternez les couleurs à chaque respiration si souhaité.")),
-                    3 => (cycle, tr("Cycle through the color spectrum in sync on all selected devices.", "Parcourez le spectre des couleurs en synchronisant les périphériques sélectionnés.")),
+                    3 => (cycle, tr("Cycle through the spectrum or your own palette on all selected devices.", "Parcourez le spectre ou votre palette sur tous les périphériques sélectionnés.")),
+                    4 => (tr("Aurora","Aurore"),tr("Two overlapping bands drift through your palette. All outputs show the same color.","Deux bandes parcourent votre palette. Toutes les sorties affichent la même couleur.")),
+                    5 => (tr("Gradient flow","Dégradé continu"),tr("Blend continuously between A and B, then back.","Passez en continu de A à B, puis de B à A.")),
+                    6 => (tr("Pulse","Impulsion"),tr("A short pulse of A fades into background B.","Une impulsion de A s’atténue sur le fond B.")),
                     _ => (solid, solid_description),
                 };
                 mode_title.set_text(title);
@@ -214,8 +228,10 @@ fn main() -> glib::ExitCode {
         update_mode();
         let update = update_mode.clone();
         mode.connect_selected_notify(move |_| update());
+        let update = update_mode.clone();
+        palettes.custom.connect_toggled(move |_| update());
         alternate.connect_toggled(move |_| update_mode());
-        let profiles = profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &saturation);
+        let profiles = profiles::install(&sidebar, &mode, &hex, &end, &period, &alternate, &palettes);
         let job = Rc::new(RefCell::new(
             None::<(Arc<AtomicBool>, std::thread::JoinHandle<()>, Vec<drivers::Target>)>,
         ));
@@ -252,7 +268,8 @@ fn main() -> glib::ExitCode {
         lighting.append(&controls);
         let status = label("", "dim-label");
         lighting.append(&status);
-        content.append(&preview::panel(&mode, &hex, &end, &period, &alternate, &saturation));
+        let (preview, epoch)=preview::panel(&mode, &hex, &end, &period, &alternate, &palettes);
+        content.append(&preview);
         let buttons = [apply.downgrade(), reset.downgrade()];
         let lifecycle_job = job.clone();
         let lifecycle_status = status.downgrade();
@@ -273,7 +290,7 @@ fn main() -> glib::ExitCode {
             let effect = if reset {
                 Some(effects::Effect::Solid([255; 3]))
             } else {
-                effects::Effect::from_inputs(mode.selected(), &hex.text(), &end.text(), alternate.is_active(), saturation.value(), period.value())
+                effects::Effect::from_inputs(mode.selected(), &hex.text(), &end.text(), alternate.is_active(), saturation.value(), period.value(),palettes.palette(mode.selected()))
             };
             let Some(effect) = effect else {
                 status.set_text(tr("Enter valid HEX colors for this effect.", "Saisissez des couleurs HEX valides pour cet effet."));
@@ -292,12 +309,13 @@ fn main() -> glib::ExitCode {
             let cancel = Arc::new(AtomicBool::new(false));
             let flag = cancel.clone();
             let (send, receive) = std::sync::mpsc::channel();
+            let start=epoch.get();
             let worker = std::thread::spawn(move || {
                 if let Some(previous) = previous {
                     let _ = previous.join();
                 }
                 if !flag.load(Ordering::Relaxed) {
-                    effects::run(targets, effect, &flag, &ticket,&|name, state| { let _ = send.send((name, state)); });
+                    effects::run(targets, effect, start, &flag, &ticket,&|name, state| { let _ = send.send((name, state)); });
                 }
             });
             *job.borrow_mut() = Some((cancel.clone(), worker, endpoints));

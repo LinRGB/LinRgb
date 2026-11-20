@@ -8,8 +8,10 @@ pub fn panel(
     second: &gtk::Entry,
     period: &gtk::SpinButton,
     alternate: &gtk::CheckButton,
-    saturation: &gtk::SpinButton,
-) -> gtk::Box {
+    palettes: &crate::palette_editor::Controls,
+) -> (gtk::Box, Rc<Cell<std::time::Instant>>) {
+    let epoch = Rc::new(Cell::new(std::time::Instant::now()));
+    let saturation = &palettes.saturation;
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
     content.add_css_class("preview-card");
     content.append(&crate::label(
@@ -32,9 +34,10 @@ pub fn panel(
     );
     let ram = model(&models, tr("Memory", "Mémoire"), false, color.clone());
     content.append(&models);
-    let model_state = Rc::new(Cell::new(None::<(Effect, i64)>));
+    let model_state = Rc::new(Cell::new(None::<(Effect, std::time::Instant)>));
     let ticking = Rc::new(Cell::new(false));
     let refresh = {
+        let epoch = epoch.clone();
         let (mode, first, second, period, alternate, saturation) = (
             mode.downgrade(),
             first.downgrade(),
@@ -43,6 +46,9 @@ pub fn panel(
             alternate.downgrade(),
             saturation.downgrade(),
         );
+        let cycle = palettes.cycle.downgrade();
+        let aurora = palettes.aurora.downgrade();
+        let custom = palettes.custom.downgrade();
         let (models, caption, gpu, ram) = (
             models.downgrade(),
             caption.downgrade(),
@@ -76,6 +82,12 @@ pub fn panel(
             ) else {
                 return;
             };
+            let palette = match mode.selected() {
+                3 if custom.upgrade().is_some_and(|c| c.is_active()) => cycle.upgrade(),
+                4 => aurora.upgrade(),
+                _ => None,
+            }
+            .and_then(|m| crate::palette_editor::compile(&m));
             let state = Effect::from_inputs(
                 mode.selected(),
                 &first.text(),
@@ -83,8 +95,11 @@ pub fn panel(
                 alternate.is_active(),
                 saturation.value(),
                 period.value(),
+                palette,
             );
-            model_state.set(state.map(|preview| (preview, glib::monotonic_time())));
+            let start = std::time::Instant::now();
+            epoch.set(start);
+            model_state.set(state.map(|preview| (preview, start)));
             caption.set_text(if state.is_some() {
                 simulated
             } else {
@@ -101,7 +116,7 @@ pub fn panel(
             if state.is_some_and(Effect::animated) && !ticking.replace(true) {
                 let (state, ticking, color) = (model_state.clone(), ticking.clone(), color.clone());
                 let (gpu, ram) = (gpu.downgrade(), ram.downgrade());
-                models.add_tick_callback(move |models, clock| {
+                models.add_tick_callback(move |models, _| {
                     let Some((preview, start)) =
                         state.get().filter(|(effect, _)| effect.animated())
                     else {
@@ -116,8 +131,7 @@ pub fn panel(
                     {
                         return glib::ControlFlow::Continue;
                     }
-                    let elapsed = (clock.frame_time() - start).max(0) as f64 / 1_000_000.0;
-                    let rgb = preview.sample(elapsed);
+                    let rgb = preview.at(start, std::time::Instant::now());
                     if color.replace(rgb) != rgb {
                         if let Some(gpu) = gpu.upgrade() {
                             gpu.queue_draw();
@@ -142,8 +156,14 @@ pub fn panel(
     period.connect_value_changed(move |_| update());
     let update = refresh.clone();
     alternate.connect_toggled(move |_| update());
+    let update = refresh.clone();
+    palettes.custom.connect_toggled(move |_| update());
+    for model in [&palettes.cycle, &palettes.aurora] {
+        let update = refresh.clone();
+        model.connect_items_changed(move |_, _, _, _| update());
+    }
     saturation.connect_value_changed(move |_| refresh());
-    content
+    (content, epoch)
 }
 
 fn model(parent: &gtk::Box, title: &str, gpu: bool, color: Rc<Cell<[u8; 3]>>) -> gtk::DrawingArea {
@@ -232,12 +252,12 @@ mod tests {
 
     #[test]
     fn preview_matches_solid_and_fade_settings() {
-        let solid = Effect::from_inputs(0, "#FF0000", "invalid", false, 100.0, 6.0).unwrap();
+        let solid = Effect::from_inputs(0, "#FF0000", "invalid", false, 100.0, 6.0, None).unwrap();
         assert_eq!(solid.sample(3.0), [255, 0, 0]);
-        let fade = Effect::from_inputs(1, "#FF0000", "#0000FF", false, 100.0, 6.0).unwrap();
+        let fade = Effect::from_inputs(1, "#FF0000", "#0000FF", false, 100.0, 6.0, None).unwrap();
         assert_eq!(fade.sample(1.5), [255, 0, 0]);
         assert_eq!(fade.sample(3.0), [0, 0, 255]);
         assert_eq!(fade.sample(6.0), [255, 0, 0]);
-        assert!(Effect::from_inputs(1, "#FF0000", "invalid", false, 100.0, 6.0).is_none());
+        assert!(Effect::from_inputs(1, "#FF0000", "invalid", false, 100.0, 6.0, None).is_none());
     }
 }

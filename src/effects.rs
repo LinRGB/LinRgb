@@ -5,12 +5,50 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Bounded at edit/load time; sampling never allocates or parses a color.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    colors: [[u8; 3]; 5],
+    len: usize,
+}
+impl Palette {
+    pub fn parse<'a>(colors: impl IntoIterator<Item = &'a str>) -> Option<Self> {
+        let mut p = Self {
+            colors: [[0; 3]; 5],
+            len: 0,
+        };
+        for color in colors {
+            *p.colors.get_mut(p.len)? = crate::color_wheel::parse_hex(color)?;
+            p.len += 1;
+        }
+        (p.len >= 2).then_some(p)
+    }
+    fn sample(self, phase: f64) -> [u8; 3] {
+        let index = phase.rem_euclid(1.0) * self.len as f64;
+        let i = index as usize % self.len;
+        blend(
+            self.colors[i],
+            self.colors[(i + 1) % self.len],
+            smooth(index.fract()),
+        )
+    }
+}
+fn smooth(x: f64) -> f64 {
+    x * x * (3.0 - 2.0 * x)
+}
+fn blend(a: [u8; 3], b: [u8; 3], w: f64) -> [u8; 3] {
+    std::array::from_fn(|i| (f64::from(a[i]) * (1. - w) + f64::from(b[i]) * w).round() as u8)
+}
 #[derive(Clone, Copy)]
 pub enum Effect {
     Solid([u8; 3]),
     Fade([u8; 3], [u8; 3], f64),
     Breathing([u8; 3], Option<[u8; 3]>, f64),
-    ColorCycle(f64, f64),
+    ColorCycle(f64, f64), // classic spectrum (legacy mode 3)
+    PaletteCycle(Palette, f64),
+    Aurora(Palette, f64),
+    Gradient([u8; 3], [u8; 3], f64),
+    Pulse([u8; 3], [u8; 3], f64),
 }
 
 impl Effect {
@@ -21,6 +59,7 @@ impl Effect {
         alternate: bool,
         saturation: f64,
         seconds: f64,
+        palette: Option<Palette>,
     ) -> Option<Self> {
         use crate::color_wheel::parse_hex;
         if !(2.0..=60.0).contains(&seconds) || !(0.0..=100.0).contains(&saturation) {
@@ -38,11 +77,24 @@ impl Effect {
                 },
                 seconds,
             )),
-            3 => Some(Self::ColorCycle(saturation / 100.0, seconds)),
+            3 => Some(match palette {
+                Some(p) => Self::PaletteCycle(p, seconds),
+                None => Self::ColorCycle(saturation / 100.0, seconds),
+            }),
+            4 => Some(Self::Aurora(palette?, seconds)),
+            5 => Some(Self::Gradient(
+                parse_hex(first)?,
+                parse_hex(second)?,
+                seconds,
+            )),
+            6 => Some(Self::Pulse(parse_hex(first)?, parse_hex(second)?, seconds)),
             _ => None,
         }
     }
 
+    pub fn at(self, epoch: Instant, now: Instant) -> [u8; 3] {
+        self.sample(now.saturating_duration_since(epoch).as_secs_f64())
+    }
     pub fn animated(self) -> bool {
         !matches!(self, Self::Solid(_))
     }
@@ -56,6 +108,31 @@ impl Effect {
                 let color = if phase >= 1.0 { b.unwrap_or(a) } else { a };
                 let brightness = (1.0 - (phase * std::f64::consts::TAU).cos()) / 2.0;
                 color.map(|c| (f64::from(c) * brightness).round() as u8)
+            }
+            Self::PaletteCycle(p, s) => p.sample(elapsed / s),
+            Self::Aurora(p, s) => {
+                let phase = (elapsed / s).rem_euclid(1.0);
+                let a = phase * std::f64::consts::TAU;
+                // Two overlapping color bands drift at different speeds but loop together.
+                blend(
+                    p.sample(phase + 0.06 * a.sin()),
+                    p.sample(2. * phase + 0.25),
+                    0.22 + 0.16 * a.cos(),
+                )
+            }
+            Self::Gradient(a, b, s) => blend(
+                a,
+                b,
+                (1. - (std::f64::consts::TAU * elapsed / s).cos()) * 0.5,
+            ),
+            Self::Pulse(peak, background, s) => {
+                let t = (elapsed / s).rem_euclid(1.0);
+                let w = if t < 0.12 {
+                    smooth(t / 0.12)
+                } else {
+                    1. - smooth(((t - 0.12) / 0.48).min(1.))
+                };
+                blend(background, peak, w)
             }
             Self::ColorCycle(saturation, seconds) => {
                 let hue = (elapsed / seconds).rem_euclid(1.0) * 6.0;
@@ -78,10 +155,7 @@ fn fade(start: [u8; 3], end: [u8; 3], phase: f64) -> [u8; 3] {
     };
     // Hold the exact color for the first 70% of each half-cycle.
     let progress = ((half_cycle.fract() - 0.7) / 0.3).clamp(0.0, 1.0);
-    let mix = progress * progress * (3.0 - 2.0 * progress);
-    std::array::from_fn(|i| {
-        (f64::from(from[i]) * (1.0 - mix) + f64::from(to[i]) * mix).round() as u8
-    })
+    blend(from, to, smooth(progress))
 }
 
 const FRAME_INTERVAL: Duration = Duration::from_nanos(16_666_667);
@@ -101,11 +175,11 @@ fn next_frame(previous: Instant, now: Instant, interval: Duration) -> Instant {
 pub fn run(
     targets: Targets,
     effect: Effect,
+    start: Instant,
     stop: &AtomicBool,
     ticket: &Ticket,
     report: &(impl Fn(String, String) + Sync),
 ) {
-    let start = Instant::now();
     // Kernel LED drivers may use the same hardware as a direct backend.
     if !effect.animated()
         || targets
@@ -186,7 +260,7 @@ fn run_group(
         match target
             .connect(stop, ticket, &mut connections)
             .and_then(|mut writer| {
-                let color = effect.sample(start.elapsed().as_secs_f64());
+                let color = effect.at(start, Instant::now());
                 writer.set_rgb(color)?;
                 Ok((writer, color))
             }) {
@@ -219,8 +293,10 @@ fn run_group(
             if stop.load(Ordering::Relaxed) {
                 break;
             }
-            let rgb = effect.sample(start.elapsed().as_secs_f64());
             active.retain_mut(|(name, writer, previous)| {
+                // A previous synchronous write may have blocked. Sample the current
+                // common phase, never replay its stale color on the next controller.
+                let rgb = effect.at(start, Instant::now());
                 if rgb == *previous || stop.load(Ordering::Relaxed) {
                     return true;
                 }
@@ -250,6 +326,71 @@ fn run_group(
 #[cfg(test)]
 mod tests {
     #[test]
+    #[ignore = "manual sampler timing, not a hardware benchmark"]
+    fn time_aurora_sampler() {
+        use super::*;
+        use std::hint::black_box;
+        let effect = Effect::Aurora(
+            Palette::parse(["#123456", "#ABCDEF", "#FF55AA", "#104020", "#765432"]).unwrap(),
+            6.,
+        );
+        let mut times = [0.; 5];
+        for ns in &mut times {
+            let start = Instant::now();
+            for i in 0..1_000_000 {
+                black_box(effect.sample(black_box(i as f64 / 60.)));
+            }
+            *ns = start.elapsed().as_nanos() as f64 / 1_000_000.;
+        }
+        times.sort_by(f64::total_cmp);
+        println!("Aurora: {:.1} ns/sample (median of 5 × 1M)", times[2]);
+    }
+    #[test]
+    fn palettes_enforce_bounds_and_follow_all_edited_stops() {
+        use super::*;
+        for invalid in [
+            vec![],
+            vec!["#abcdef"],
+            vec!["#abcdef", "wrong"],
+            vec!["#abcdef"; 6],
+        ] {
+            assert!(Palette::parse(invalid).is_none());
+        }
+        let p = Palette::parse(["#ff0000", "#00ff00", "#0000ff"]).unwrap();
+        for (t, rgb) in [
+            (0., [255, 0, 0]),
+            (2., [0, 255, 0]),
+            (4., [0, 0, 255]),
+            (6., [255, 0, 0]),
+        ] {
+            assert_eq!(Effect::PaletteCycle(p, 6.).sample(t), rgb);
+        }
+    }
+    #[test]
+    fn pulse_gradient_and_aurora_use_user_colors_and_loop() {
+        use super::*;
+        let a = [21, 37, 92];
+        let b = [110, 52, 14];
+        assert_eq!(Effect::Gradient(a, b, 4.).sample(2.), b);
+        assert_eq!(Effect::Pulse(a, b, 10.).sample(1.2), a);
+        assert_eq!(Effect::Pulse(a, b, 10.).sample(9.), b);
+        let p = Palette::parse(["#15255C", "#6E340E"]).unwrap();
+        let e = Effect::Aurora(p, 6.);
+        assert_ne!(e.sample(0.), e.sample(2.));
+        assert_eq!(e.sample(0.), e.sample(6.));
+    }
+    #[test]
+    fn delayed_worker_joins_preview_phase_without_replaying_missed_frames() {
+        use super::*;
+        let epoch = Instant::now();
+        let late = epoch + Duration::from_millis(2250);
+        let e = Effect::Gradient([0; 3], [200; 3], 4.);
+        assert_ne!(e.at(epoch, epoch), e.at(epoch, late));
+        assert_eq!(e.at(epoch, late), e.sample(2.25));
+        let next = next_frame(epoch, late, FRAME_INTERVAL);
+        assert!(next >= late && next <= late + FRAME_INTERVAL);
+    }
+    #[test]
     fn reports_an_unavailable_target_without_starting_an_effect() {
         use super::{Effect, Target};
         let messages = std::sync::Mutex::new(Vec::new());
@@ -263,6 +404,7 @@ mod tests {
                 ),
             )],
             Effect::ColorCycle(1.0, 6.0),
+            std::time::Instant::now(),
             &std::sync::atomic::AtomicBool::new(false),
             &crate::drivers::Generation::default().ticket(),
             &|name, status| messages.lock().unwrap().push((name, status)),

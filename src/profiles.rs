@@ -12,7 +12,9 @@ use std::{
 type Profiles = BTreeMap<String, Value>;
 
 fn persist(path: &Path, profiles: &Profiles) -> Result<(), String> {
-    fs::create_dir_all(config_dir()).map_err(|error| error.to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
     let text = serde_json::to_vec_pretty(profiles).expect("JSON values serialize");
     glib::file_set_contents(path, &text).map_err(|error| error.to_string())
 }
@@ -49,7 +51,17 @@ pub fn config_dir() -> PathBuf {
     glib::user_config_dir().join("LinRGB")
 }
 
-fn parse(value: &Value) -> Option<(&str, &str, u32, f64, bool, f64)> {
+#[derive(Debug, PartialEq)]
+struct Profile<'a> {
+    first: &'a str,
+    second: &'a str,
+    mode: u32,
+    seconds: f64,
+    alternate: bool,
+    saturation: f64,
+    colors: Option<Vec<String>>,
+}
+fn parse(value: &Value) -> Option<Profile<'_>> {
     let first = value["color_a"].as_str()?;
     let second = value["color_b"].as_str()?;
     let mode = if let Some(mode) = value.get("mode") {
@@ -60,8 +72,38 @@ fn parse(value: &Value) -> Option<(&str, &str, u32, f64, bool, f64)> {
     let seconds = value["cycle_seconds"].as_f64()?;
     let alternate = value["alternate"].as_bool().unwrap_or(false);
     let saturation = value["saturation"].as_f64().unwrap_or(100.0);
-    crate::effects::Effect::from_inputs(mode, first, second, alternate, saturation, seconds)?;
-    Some((first, second, mode, seconds, alternate, saturation))
+    let colors = match value.get("palette") {
+        None | Some(Value::Null) => None,
+        Some(v) => {
+            let a = v.as_array()?;
+            if !(2..=5).contains(&a.len()) || !matches!(mode, 3 | 4) {
+                return None;
+            }
+            Some(
+                a.iter()
+                    .map(|s| s.as_str().map(str::to_owned))
+                    .collect::<Option<Vec<_>>>()?,
+            )
+        }
+    };
+    let palette = match &colors {
+        None => None,
+        Some(c) => Some(crate::effects::Palette::parse(
+            c.iter().map(String::as_str),
+        )?),
+    };
+    crate::effects::Effect::from_inputs(
+        mode, first, second, alternate, saturation, seconds, palette,
+    )?;
+    Some(Profile {
+        first,
+        second,
+        mode,
+        seconds,
+        alternate,
+        saturation,
+        colors,
+    })
 }
 
 pub fn install(
@@ -71,8 +113,9 @@ pub fn install(
     second: &gtk::Entry,
     period: &gtk::SpinButton,
     alternate: &gtk::CheckButton,
-    saturation: &gtk::SpinButton,
+    palettes: &crate::palette_editor::Controls,
 ) -> gtk::ListBox {
+    let saturation = &palettes.saturation;
     let path = config_dir().join("profiles.json");
     let loaded = match fs::read(&path) {
         Ok(data) => {
@@ -163,20 +206,29 @@ pub fn install(
         name.clone(),
         status.clone(),
     );
+    let restoring = palettes.clone();
     choices.connect_row_selected(move |_, row| {
         let Some(label) = row.and_then(row_label) else {
             return;
         };
         let id = label.text();
         let stored = stored.borrow();
-        let Some((first, second, mode, seconds, alternate, saturation)) =
-            stored.get(id.as_str()).and_then(parse)
+        let Some(Profile {
+            first,
+            second,
+            mode,
+            seconds,
+            alternate,
+            saturation,
+            colors,
+        }) = stored.get(id.as_str()).and_then(parse)
         else {
             return;
         };
         a.set_text(first);
         b.set_text(second);
         lighting.set_selected(mode);
+        restoring.restore(mode, colors.as_deref());
         duration.set_value(seconds);
         alternating.set_active(alternate);
         intensity.set_value(saturation);
@@ -194,6 +246,7 @@ pub fn install(
         alternate.clone(),
         saturation.clone(),
     );
+    let saving = palettes.clone();
     let list = choices.clone();
     save.connect_clicked(move |_| {
         let name = name.text();
@@ -202,7 +255,7 @@ pub fn install(
             status.set_text(tr("Enter a profile name.", "Saisissez un nom de profil."));
             return;
         }
-        let profile = json!({"color_a": first.text().as_str(), "color_b": second.text().as_str(), "mode": mode.selected(), "cycle_seconds": period.value(), "alternate": alternate.is_active(), "saturation": saturation.value()});
+        let profile = json!({"color_a": first.text().as_str(), "color_b": second.text().as_str(), "mode": mode.selected(), "cycle_seconds": period.value(), "alternate": alternate.is_active(), "saturation": saturation.value(),"palette":saving.colors(mode.selected())});
         if parse(&profile).is_none() {
             status.set_text(tr("Enter valid HEX colors before saving.", "Saisissez des couleurs HEX valides avant d’enregistrer."));
             return;
@@ -377,19 +430,58 @@ mod tests {
     }
 
     #[test]
+    fn edited_palette_round_trips_through_the_profile_file() {
+        let path = std::env::temp_dir()
+            .join(gtk::glib::uuid_string_random())
+            .join("profiles.json");
+        let v = json!({"mode":4,"color_a":"#123456","color_b":"#789abc","cycle_seconds":14.,"palette":["#abcdef","#fe1234","#001234","#000000","#ffffff"]});
+        let mut saved = Profiles::from([("Night".into(), v.clone())]);
+        persist(&path, &saved).unwrap();
+        saved = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(parse(&saved["Night"]), parse(&v));
+        assert_eq!(parse(&v).unwrap().colors.unwrap().len(), 5);
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        for bad in [
+            Value::Null,
+            json!(["#123456"]),
+            json!(["#abcdef", "nope"]),
+            json!([1, 2]),
+        ] {
+            let mut v = v.clone();
+            v["palette"] = bad;
+            assert!(parse(&v).is_none());
+        }
+    }
+    #[test]
     fn validates_a_profile_before_loading() {
         let mut profile =
             json!({"color_a":"#FF0000", "color_b":"#0000FF", "fade":true, "cycle_seconds":5.0});
         assert_eq!(
             parse(&profile),
-            Some(("#FF0000", "#0000FF", 1, 5.0, false, 100.0))
+            Some(Profile {
+                first: "#FF0000",
+                second: "#0000FF",
+                mode: 1,
+                seconds: 5.0,
+                alternate: false,
+                saturation: 100.,
+                colors: None
+            })
         );
         profile["mode"] = json!(2);
         profile["alternate"] = json!(true);
         profile["saturation"] = json!(75);
         assert_eq!(
             parse(&profile),
-            Some(("#FF0000", "#0000FF", 2, 5.0, true, 75.0))
+            Some(Profile {
+                first: "#FF0000",
+                second: "#0000FF",
+                mode: 2,
+                seconds: 5.0,
+                alternate: true,
+                saturation: 75.,
+                colors: None
+            })
         );
         profile["cycle_seconds"] = json!(0);
         assert!(parse(&profile).is_none());
