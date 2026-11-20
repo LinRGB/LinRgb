@@ -101,8 +101,10 @@ The input follows `main`, not a release tag. Nix records the chosen commit in `f
 
 ## Everyday use
 
-- Pick a fixed HEX color, two-color fade, breathing effect or spectrum cycle. The preview does not touch hardware. **Reset to white** sends white; it is not a factory reset.
-- Save colors and effects as profiles. Loading a profile does not apply it. The existing configuration and profile formats are unchanged.
+- **Aurora** blends two overlapping passes through a palette of 2–5 colors. **Color cycle** visits each palette color in order, or uses the classic spectrum. Click a swatch to edit it; add or remove colors before applying.
+- **Gradient flow** moves continuously from A to B and back. **Pulse** flashes A against background B. Solid, fade and breathing are still available. Set the cycle duration from 2 to 60 seconds.
+- The preview and selected devices follow the same clock after **Apply**. Each target receives a single color, not a per-LED wave. Controllers can update at different rates. Editing or loading a profile changes only the preview until you apply again. **Reset to white** sends white; it is not a factory reset.
+- Profiles remember the active palette. Older profiles still load, including spectrum cycles saved without a palette.
 - Use built-in palettes or a [custom theme / Noctalia wallpaper palette](design/README.md). Interface themes do not change your lighting.
 - Close to the tray if your desktop provides one; use **Ctrl+Q** to quit completely.
 
