@@ -193,8 +193,8 @@ fn main() -> glib::ExitCode {
         lighting.append(&alternate);
         let palettes=palette_editor::Controls::new(&saturation);
         lighting.append(&palettes.custom);
-        let cycle_row=palette_editor::row(&palettes.cycle);
-        let aurora_row=palette_editor::row(&palettes.aurora);
+        let cycle_row=palette_editor::row(&palettes.cycle, false);
+        let aurora_row=palette_editor::row(&palettes.aurora, true);
         lighting.append(&cycle_row); lighting.append(&aurora_row);
         lighting.append(&saturation_row);
         let update_mode = {
