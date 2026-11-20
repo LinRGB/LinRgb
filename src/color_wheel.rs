@@ -236,12 +236,9 @@ pub fn picker_with_slots(
     heading.add_css_class("heading");
     panel.append(&heading);
     if let Some(slots) = slots {
-        let middle = crate::adaptive::pair(12, 65);
-        let wheel = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        wheel.set_halign(gtk::Align::End);
-        wheel.set_valign(gtk::Align::Center);
-        wheel.append(&area);
-        middle.append(&wheel);
+        let middle = crate::adaptive::centered_pair(12);
+        area.set_valign(gtk::Align::Center);
+        middle.append(&area);
         middle.append(slots);
         panel.append(&middle);
     } else {

@@ -134,12 +134,12 @@ fn render(
             .find(|(id, _, _)| *id == mode)
             .map_or(DARK, |(_, _, colors)| *colors),
     };
-    let mut css = String::new();
+    // Resolve theme variables here so older GTK 4 versions need no CSS variable support.
+    let mut css = include_str!("style.css").to_owned();
     for (role, color) in ROLES.into_iter().zip(colors) {
-        css.push_str(&format!("@define-color linrgb_{role} {color};\n"));
+        css = css.replace(&format!("var(--linrgb-{role})"), color);
     }
-    css.push_str(&format!(".linrgb {{ font-size: {zoom}%; }}\n"));
-    css.push_str(include_str!("style.css"));
+    css.push_str(&format!("\n.linrgb {{ font-size: {zoom}%; }}\n"));
     provider.load_from_data(&css);
 }
 

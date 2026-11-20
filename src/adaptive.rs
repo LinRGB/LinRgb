@@ -21,6 +21,7 @@ mod imp {
         pub gap: Cell<i32>,
         pub share: Cell<i32>,
         pub equal_height: Cell<bool>,
+        pub center_first: Cell<bool>,
         pub columns: Cell<Option<bool>>,
         pub on_columns: RefCell<Option<ColumnsChanged>>,
     }
@@ -33,6 +34,19 @@ mod imp {
     }
 
     impl ObjectImpl for Adaptive {}
+
+    impl Adaptive {
+        fn split(&self, width: i32, left: i32, right: i32) -> Option<(i32, i32, i32)> {
+            let gap = self.gap.get();
+            if self.center_first.get() {
+                let x = (width - left) / 2;
+                let remaining = width - x - left - gap;
+                (x >= 0 && remaining >= right).then_some((x, left, remaining))
+            } else {
+                columns(width, gap, self.share.get(), left, right).map(|(a, b)| (0, a, b))
+            }
+        }
+    }
 
     impl LayoutManagerImpl for Adaptive {
         fn request_mode(&self, _: &gtk::Widget) -> gtk::SizeRequestMode {
@@ -69,7 +83,7 @@ mod imp {
                 let (b_min, b_nat, _, _) = b.measure(orientation, -1);
                 return (a_min.max(b_min), a_nat.max(b_nat), -1, -1);
             }
-            if let Some((aw, bw)) = columns(size, gap, share, a_min, b_min) {
+            if let Some((_, aw, bw)) = self.split(size, a_min, b_min) {
                 let (a_min, a_nat, _, _) = a.measure(orientation, aw);
                 let (b_min, b_nat, _, _) = b.measure(orientation, bw);
                 (a_min.max(b_min), a_nat.max(b_nat), -1, -1)
@@ -94,7 +108,7 @@ mod imp {
             let vertical = gtk::Orientation::Vertical;
             let a_min = a.measure(horizontal, -1).0;
             let b_min = b.measure(horizontal, -1).0;
-            let split = columns(width, gap, self.share.get(), a_min, b_min);
+            let split = self.split(width, a_min, b_min);
             if let Some(callback) = self.on_columns.borrow().as_ref() {
                 let side_by_side = split.is_some();
                 if self.columns.replace(Some(side_by_side)) != Some(side_by_side) {
@@ -102,7 +116,7 @@ mod imp {
                     glib::idle_add_local_once(move || callback(side_by_side));
                 }
             }
-            if let Some((aw, bw)) = split {
+            if let Some((x, aw, bw)) = split {
                 let row_height = |child: &gtk::Widget, width| {
                     if self.equal_height.get() {
                         height
@@ -110,8 +124,8 @@ mod imp {
                         child.measure(vertical, width).1.min(height)
                     }
                 };
-                a.allocate(aw, row_height(&a, aw), -1, None);
-                place(&b, bw, row_height(&b, bw), aw + gap, 0);
+                place(&a, aw, row_height(&a, aw), x, 0);
+                place(&b, bw, row_height(&b, bw), x + aw + gap, 0);
             } else {
                 let a_height = a.measure(vertical, width).1;
                 let b_min = b.measure(vertical, width).0;
@@ -161,6 +175,18 @@ pub fn pair(gap: i32, left_share: i32) -> gtk::Box {
     layout.imp().share.set(left_share);
     let container = gtk::Box::default();
     container.set_layout_manager(Some(layout));
+    container
+}
+
+pub fn centered_pair(gap: i32) -> gtk::Box {
+    let container = pair(gap, 50);
+    container
+        .layout_manager()
+        .and_downcast::<Adaptive>()
+        .unwrap()
+        .imp()
+        .center_first
+        .set(true);
     container
 }
 

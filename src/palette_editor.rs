@@ -234,6 +234,26 @@ mod tests {
             .iter()
             .find_map(|w| w.downcast_ref::<gtk::ListBox>())
             .unwrap();
+        let wheel = all.iter().find(|w| w.has_css_class("color-wheel")).unwrap();
+        wheel.set_size_request(152, 152);
+        for width in [1200, 670, 235] {
+            panel.allocate(
+                width,
+                panel.measure(gtk::Orientation::Vertical, width).1,
+                -1,
+                None,
+            );
+            let bounds = wheel.compute_bounds(&panel).unwrap();
+            let center = bounds.x() + bounds.width() / 2.;
+            assert!(
+                (center - width as f32 / 2.).abs() <= 1.,
+                "wheel at {center} in {width}px panel"
+            );
+            let rail = slots.compute_bounds(&panel).unwrap();
+            assert!(
+                rail.x() >= bounds.x() + bounds.width() || rail.y() >= bounds.y() + bounds.height()
+            );
+        }
         let hex = all
             .iter()
             .find_map(|w| w.downcast_ref::<gtk::Entry>())
