@@ -86,16 +86,15 @@ pub fn panel(
                 3 if custom.upgrade().is_some_and(|c| c.is_active()) => cycle.upgrade(),
                 4 => aurora.upgrade(),
                 _ => None,
-            }
-            .and_then(|m| crate::palette_editor::compile(&m));
-            let state = Effect::from_inputs(
+            };
+            let state = crate::palette_editor::effect(
                 mode.selected(),
                 &first.text(),
                 &second.text(),
                 alternate.is_active(),
                 saturation.value(),
                 period.value(),
-                palette,
+                palette.as_ref(),
             );
             let start = std::time::Instant::now();
             epoch.set(start);

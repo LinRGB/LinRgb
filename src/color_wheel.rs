@@ -67,6 +67,14 @@ fn wheel_position(rgb: [u8; 3]) -> ((f64, f64), f64) {
 }
 
 pub fn picker(title: &str, initial: [u8; 3]) -> (gtk::Box, gtk::Entry) {
+    picker_with_slots(title, initial, None)
+}
+
+pub fn picker_with_slots(
+    title: &str,
+    initial: [u8; 3],
+    slots: Option<&gtk::Box>,
+) -> (gtk::Box, gtk::Entry) {
     let area = gtk::DrawingArea::new();
     area.add_css_class("color-wheel");
     area.set_halign(gtk::Align::Center);
@@ -227,7 +235,18 @@ pub fn picker(title: &str, initial: [u8; 3]) -> (gtk::Box, gtk::Entry) {
     heading.set_xalign(0.0);
     heading.add_css_class("heading");
     panel.append(&heading);
-    panel.append(&area);
+    if let Some(slots) = slots {
+        let middle = crate::adaptive::pair(12, 65);
+        let wheel = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        wheel.set_halign(gtk::Align::End);
+        wheel.set_valign(gtk::Align::Center);
+        wheel.append(&area);
+        middle.append(&wheel);
+        middle.append(slots);
+        panel.append(&middle);
+    } else {
+        panel.append(&area);
+    }
     for (text, field) in [
         ("HEX", hex.upcast_ref::<gtk::Widget>()),
         (tr("Brightness", "Luminosité"), brightness.upcast_ref()),

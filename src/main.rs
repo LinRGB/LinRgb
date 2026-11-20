@@ -193,8 +193,8 @@ fn main() -> glib::ExitCode {
         lighting.append(&alternate);
         let palettes=palette_editor::Controls::new(&saturation);
         lighting.append(&palettes.custom);
-        let cycle_row=palette_editor::row(&palettes.cycle, false);
-        let aurora_row=palette_editor::row(&palettes.aurora, true);
+        let cycle_row=palette_editor::row(&palettes.cycle);
+        let aurora_row=palette_editor::row(&palettes.aurora);
         lighting.append(&cycle_row); lighting.append(&aurora_row);
         lighting.append(&saturation_row);
         let update_mode = {
@@ -290,7 +290,7 @@ fn main() -> glib::ExitCode {
             let effect = if reset {
                 Some(effects::Effect::Solid([255; 3]))
             } else {
-                effects::Effect::from_inputs(mode.selected(), &hex.text(), &end.text(), alternate.is_active(), saturation.value(), period.value(),palettes.palette(mode.selected()))
+                palette_editor::effect(mode.selected(), &hex.text(), &end.text(), alternate.is_active(), saturation.value(), period.value(),palettes.model(mode.selected()))
             };
             let Some(effect) = effect else {
                 status.set_text(tr("Enter valid HEX colors for this effect.", "Saisissez des couleurs HEX valides pour cet effet."));

@@ -41,7 +41,10 @@
   background: mix(@linrgb_surface, @linrgb_accent, 0.17);
   color: @linrgb_text;
 }
-.linrgb .profile-list { background: transparent; }
+.linrgb .profile-list, .linrgb .palette-slots { background: transparent; }
+.linrgb .palette-slots row { padding: 3px 6px; border: 2px solid transparent; border-radius: 10px; }
+.linrgb .palette-slots row:selected { border-color: @linrgb_accent; background: @linrgb_raised; }
+.linrgb .palette-chip { min-width: 3.3em; min-height: 1.15em; border-radius: 5px; }
 .linrgb .profile-list row {
   padding: 0.6em 0.9em;
   margin-bottom: 0.22em;
