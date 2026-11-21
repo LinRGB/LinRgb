@@ -1,15 +1,15 @@
 pkgname=linrgb
-pkgver=1.0.0beta.4
+pkgver=${LINRGB_NATIVE_VERSION:-1.0.0beta.4}
 pkgrel=1
-_version=1.0.0-beta.4
+_version=${LINRGB_VERSION:-1.0.0-beta.4}
 pkgdesc='Native RGB lighting control for Linux'
 arch=('x86_64')
 url='https://github.com/LinRGB/LinRgb'
-license=('LicenseRef-NotDeclared')
+license=("${LINRGB_LICENSE:-LicenseRef-NotDeclared}")
 depends=('gtk4' 'systemd-libs')
 makedepends=('rust' 'pkgconf' 'systemd')
-source=("$url/releases/download/v$_version/$pkgname-$_version.tar.gz")
-sha256sums=('9a8d682f4980c422603cd28a74aeeff68bb39cb0de21a2bf834e8e8d382cb72f')
+source=("${LINRGB_LOCAL_ARCHIVE:-$url/releases/download/v$_version/$pkgname-$_version.tar.gz}")
+sha256sums=("${LINRGB_SHA256:-9a8d682f4980c422603cd28a74aeeff68bb39cb0de21a2bf834e8e8d382cb72f}")
 
 prepare() {
   cd "$srcdir/$pkgname-$_version"
@@ -29,6 +29,7 @@ package() {
   install -Dm644 packaging/io.github.linrgb.LinRgb.desktop -t "$pkgdir/usr/share/applications"
   install -Dm644 packaging/io.github.linrgb.LinRgb.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps"
   install -Dm644 packaging/70-linrgb.rules -t "$pkgdir/usr/lib/udev/rules.d"
+  [[ ! -f LICENSE ]] || install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 notices/* -t "$pkgdir/usr/share/doc/linrgb"
   install -d "$pkgdir/usr/lib/modules-load.d"
   printf 'i2c-dev\n' > "$pkgdir/usr/lib/modules-load.d/linrgb.conf"
