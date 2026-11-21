@@ -12,9 +12,9 @@ Get the package for your distribution and `SHA256SUMS` from the [beta releases](
 
 | System | Install the downloaded beta 4 file |
 |---|---|
-| Arch Linux x86_64 | `sudo pacman -U ./linrgb-1.0.0-beta.4-arch-x86_64.pkg.tar.zst` |
-| Debian 13 amd64 | `sudo apt install ./linrgb-1.0.0-beta.4-debian13-amd64.deb` |
-| Fedora 44 x86_64 | `sudo dnf install ./linrgb-1.0.0-beta.4-fedora44-x86_64.rpm` |
+| Arch Linux x86_64 | `sudo pacman -U ./linrgb-1.0.0-beta.5-arch-x86_64.pkg.tar.zst` |
+| Debian 13 amd64 | `sudo apt install ./linrgb-1.0.0-beta.5-debian13-amd64.deb` |
+| Fedora 44 x86_64 | `sudo dnf install ./linrgb-1.0.0-beta.5-fedora44-x86_64.rpm` |
 
 These are standalone packages, not an AUR submission, Debian repository or Fedora COPR. They install the desktop launcher, icon, targeted udev rules and `i2c-dev` modules-load entry. Reboot if the new device permissions have not taken effect. Run `linrgb` as your **normal desktop user**, never as root.
 
