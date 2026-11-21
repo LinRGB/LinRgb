@@ -116,6 +116,6 @@ See the [testing guide](docs/testing-beta.md) and [report compatibility](https:/
 
 ## Development, credits and licenses
 
-With flakes enabled: `nix develop`, `cargo test --all-targets --locked`, `cargo run --locked -- --diagnostics`. For the packaged build use `nix build`. Native recipes are in [`packaging/`](packaging); release-source and verification instructions are in [the release checklist](docs/releasing.md).
+With flakes enabled: `nix develop`, `cargo test --all-targets --locked`, `cargo run --locked -- --diagnostics`. For the packaged build use `nix build`. Native recipes are in [`packaging/`](packaging). Version tags build, test and publish Arch, Debian 13 and Fedora 44 packages together with SHA-256 checksums. Use the manual Actions run to test without publishing; see the [release checklist](docs/releasing.md).
 
 LinRGB was built with substantial AI assistance under the maintainer's direction. People tested selected hardware; a successful build or simulation is not a physical compatibility claim. Thanks to OpenRGB contributors for protocol research and PCI identification data. Original LinRGB code and documentation are available under the [MIT License](LICENSE). This grant does not cover the OpenRGB-derived catalogue and device matches, hardware descriptors, branding artwork or third-party dependencies. See the [licensing and attribution notes](notices/README.txt) before redistributing bundled material.

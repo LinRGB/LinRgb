@@ -14,6 +14,7 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	install -Dm644 -t debian/linrgb/usr/share/doc/linrgb notices/*
+	if [ -f LICENSE ]; then install -Dm644 LICENSE debian/linrgb/usr/share/doc/linrgb/copyright; fi
 	install -Dm755 target/x86_64-unknown-linux-gnu/release/linrgb debian/linrgb/usr/bin/linrgb
 	install -Dm644 packaging/io.github.linrgb.LinRgb.desktop -t debian/linrgb/usr/share/applications
 	install -Dm644 packaging/io.github.linrgb.LinRgb.svg -t debian/linrgb/usr/share/icons/hicolor/scalable/apps

@@ -1,7 +1,22 @@
-# Native beta release checklist
+# Native releases
 
-1. Fetch `origin/main` and tags, integrate without rewriting history, run format, strict all-target Clippy, all-target tests, `nix flake check --no-update-lock-file`, `nix build`, `nix run . -- --diagnostics`, and `python3 tools/sync_ene_udev.py --check`. Check `udevadm verify packaging/70-linrgb.rules`. Keep the flake pin.
-2. From the clean repository root run `tools/release-source.sh HEAD linrgb-1.0.0-beta.4.tar.gz`. This creates the application source asset from tracked build inputs only, with fixed archive timestamp and prefix. Recipe wrappers are kept outside their own checksum. Verify its SHA-256 against **all three** recipes. Never substitute another revision's binaries.
-3. Build as ordinary users in the target systems. Arch: copy the source asset beside `packaging/arch/PKGBUILD`, run `makepkg --syncdeps` there. Debian 13: install the build dependencies in `packaging/debian/debian/control`, install Rust with `rustup toolchain install 1.99.1 --profile minimal`, then run `sh packaging/debian/build.sh /path/to/source.tar.gz`. Fedora 44: install the spec's BuildRequires, rpm-build and rpmdevtools, run `rpmdev-setuptree`, put the asset in `~/rpmbuild/SOURCES`, then `rpmbuild -bb packaging/fedora/linrgb.spec`.
-4. Inspect package contents/metadata, install, run `linrgb --version` and passive diagnostics as non-root, then uninstall. Give the binaries the portable filenames in the README (their native package metadata stays unchanged). Bundle source asset, commit ID and `SHA256SUMS`. Repeat verification on the exact release revision after any merge.
-5. Fast-forward `origin/main` (or PR if protected), confirm the remote SHA and CI, create the annotated tag on that SHA, push it and create a **pre-release** with `docs/beta-4.md`. Download the assets again and check the manifest, tag, release metadata, README banner and tagged Nix flake. Do not publish if the source, permissions, checks or authentication are unresolved. Never use `--force`.
+1. Set `package.version` in `Cargo.toml` and update `Cargo.lock` to match. Commit the change on `main` through the usual review process. Wait for CI on that commit. Do not tag a version that already has a tag, release or draft.
+2. In **Actions → Native release packages → Run workflow**, select `main`. This is a dry run: it builds and installs all three packages, tests them and uploads `native-release-bundle` to the run. It never creates or edits a GitHub Release. Inspect its `SOURCE-COMMIT`, native package versions and `SHA256SUMS`.
+3. When ready, push an annotated tag on the **exact** SHA you tested. For example:
+
+   ```bash
+   sha='replace-with-the-verified-full-commit-sha'
+   git fetch origin main --tags &&
+     git merge-base --is-ancestor "$sha" origin/main &&
+     git tag -a v1.0.0-beta.5 "$sha" -m 'LinRGB v1.0.0-beta.5' &&
+     git push origin refs/tags/v1.0.0-beta.5
+   ```
+
+   The tag push is the explicit publication trigger. Do not create the release via the GitHub Releases UI first. Tags must match Cargo exactly: `vMAJOR.MINOR.PATCH`, optionally with `-alpha.N`, `-beta.N` or `-rc.N`.
+4. Wait for all builds and installation checks. The workflow creates a draft, uploads the source archive, three native packages, `SOURCE-COMMIT` and `SHA256SUMS`, checks all six uploads against their local digests, and only then publishes. Prerelease versions are marked as such. Download the assets and run `sha256sum --check SHA256SUMS`.
+
+The build jobs use pinned official distro images and the existing Arch, Debian and Fedora recipes. The archive is produced once from the tag tree by `tools/release-source.sh`; each builder checks its digest. Package repositories are not frozen by the image pin. The diagnostic smoke test runs as an ordinary user in a disposable container: it is not a physical RGB test.
+
+If a build fails, fix it before publishing. Rerun the failed tag workflow for a transient failure; if the tagged source itself needs a fix, use a new version and tag. Do not move a tag. If upload fails, its incomplete draft stays private. Review and remove **only that incomplete unpublished draft** before rerunning the failed publication job. Existing drafts and published releases are never overwritten. Manual dispatch remains build-only, even if launched on a tag.
+
+For historical releases, use the native recipes from their corresponding tags. The standalone recipe defaults remain pinned to the beta.4 archive; the release workflow passes the current version and archive checksum explicitly.

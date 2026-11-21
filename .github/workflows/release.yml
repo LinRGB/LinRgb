@@ -1,0 +1,174 @@
+name: Native release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event.deleted == false
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
+      digest: ${{ steps.source.outputs.digest }}
+      epoch: ${{ steps.source.outputs.epoch }}
+    steps:
+      - uses: >- # v4.2.2
+          actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: source
+        shell: bash
+        run: |
+          commit=$(git rev-parse HEAD)
+          test "$commit" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          version=$(python3 - <<'PY'
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              print(tomllib.load(f)["package"]["version"])
+          PY
+          )
+          n='(0|[1-9][0-9]*)'
+          [[ "$version" =~ ^$n\.$n\.$n(-(alpha|beta|rc)\.[1-9][0-9]*)?$ ]]
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$GITHUB_REF" = "refs/tags/v$version"
+            git merge-base --is-ancestor "$commit" origin/main
+          fi
+          mkdir source
+          archive="source/linrgb-$version.tar.gz"
+          tools/release-source.sh "$commit" "$archive"
+          printf '%s\n' "$commit" > source/SOURCE-COMMIT
+          digest=$(sha256sum "$archive" | cut -d' ' -f1)
+          printf 'commit=%s\nversion=%s\ndigest=%s\nepoch=%s\n' \
+            "$commit" "$version" "$digest" \
+            "$(git show -s --format=%ct "$commit")" >> "$GITHUB_OUTPUT"
+      - uses: >- # v4.6.2
+          actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-source
+          path: source/
+          overwrite: true # Run artifacts only, never GitHub Release assets.
+          if-no-files-found: error
+
+  package:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: arch
+            image: >-
+              archlinux@sha256:fa2d4ce3310ddd90a4208e5168be8ad367da5129af1245f38fd2d803bcbe3239
+          - distro: debian
+            image: >-
+              debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+          - distro: fedora
+            image: >-
+              fedora@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e
+    steps:
+      - uses: >- # v4.2.2
+          actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - uses: >- # v4.3.0
+          actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-source
+          path: source
+      - shell: bash
+        env:
+          LINRGB_VERSION: ${{ needs.source.outputs.version }}
+          LINRGB_SHA256: ${{ needs.source.outputs.digest }}
+          SOURCE_DATE_EPOCH: ${{ needs.source.outputs.epoch }}
+          COMMIT: ${{ needs.source.outputs.commit }}
+          DISTRO: ${{ matrix.distro }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          test "$(<source/SOURCE-COMMIT)" = "$COMMIT"
+          mkdir packages
+          docker run --rm \
+            -e LINRGB_VERSION -e LINRGB_SHA256 -e SOURCE_DATE_EPOCH \
+            -v "$PWD:/repo:ro" -v "$PWD/source:/input:ro" \
+            -v "$PWD/packages:/out" \
+            "$IMAGE" bash /repo/tools/build-release-package.sh "$DISTRO"
+      - uses: >- # v4.6.2
+          actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-package-${{ matrix.distro }}
+          path: packages/
+          overwrite: true
+          if-no-files-found: error
+
+  bundle:
+    needs: [source, package]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: >- # v4.3.0
+          actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - shell: bash
+        working-directory: release
+        env:
+          VERSION: ${{ needs.source.outputs.version }}
+          COMMIT: ${{ needs.source.outputs.commit }}
+          DIGEST: ${{ needs.source.outputs.digest }}
+        run: |
+          test "$(<SOURCE-COMMIT)" = "$COMMIT"
+          p="linrgb-$VERSION"
+          printf '%s  %s\n' "$DIGEST" "$p.tar.gz" | sha256sum --check
+          sha256sum SOURCE-COMMIT "$p.tar.gz" "$p-arch-x86_64.pkg.tar.zst" \
+            "$p-debian13-amd64.deb" "$p-fedora44-x86_64.rpm" > SHA256SUMS
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 6
+      - uses: >- # v4.6.2
+          actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-release-bundle
+          path: release/
+          overwrite: true
+          if-no-files-found: error
+
+  publish:
+    if: >-
+      github.event_name == 'push' && github.event.deleted == false &&
+      startsWith(github.ref, 'refs/tags/v')
+    needs: [source, bundle]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: >-
+          actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - uses: >- # v4.3.0
+          actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: native-release-bundle
+          path: release
+      - shell: bash
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ needs.source.outputs.commit }}
+          VERSION: ${{ needs.source.outputs.version }}
+        run: bash ../tools/publish-release.sh
